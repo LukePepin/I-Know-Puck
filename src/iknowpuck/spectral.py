@@ -31,25 +31,25 @@ def manager_features(drafts: pd.DataFrame, players: pd.DataFrame) -> pd.DataFram
     d["grp"] = d["pos"].map(group_of)
     rows = []
     for mgr, g in d.groupby("owner_id"):
-        early = g[g["round"] <= 6]
-        goalies = g[g.grp == 2]
-        team_share = g.groupby(["season", "pro_team_id"]).size().groupby("season").max() / g.groupby("season").size()
-        rows.append(
-            {
-                "manager": str(mgr),
-                "n_picks": len(g),
-                "mean_reach": g["reach"].mean(),
+        per_season = []
+        for _, gs in g.groupby("season"):
+            early = gs[gs["round"] <= 6]
+            goalies = gs[gs.grp == 2]
+            per_season.append({
+                "mean_reach": gs["reach"].mean(),
                 "reach_early": early["reach"].mean(),
-                "reach_sd": g["reach"].std(),
-                "adp_rank_corr": g[["overall", "adp"]].corr(method="spearman").iloc[0, 1],
+                "reach_sd": gs["reach"].std(),
+                "adp_rank_corr": gs[["overall", "adp"]].corr(method="spearman").iloc[0, 1],
                 "d_share_early": (early.grp == 1).mean(),
                 "g_share_early": (early.grp == 2).mean(),
-                "first_goalie_round": goalies["round"].min() if len(goalies) else g["round"].max() + 1,
-                "n_goalies": len(goalies) / g["season"].nunique(),
-                "homer_index": team_share.mean(),
-                "auto_share": g["auto"].mean() if "auto" in g else 0.0,
-            }
-        )
+                "first_goalie_round": goalies["round"].min() if len(goalies) else gs["round"].max() + 1,
+                "n_goalies": len(goalies),
+                "homer_index": gs.groupby("pro_team_id").size().max() / len(gs),
+                "auto_share": gs["auto"].mean() if "auto" in gs else 0.0,
+            })
+        row = pd.DataFrame(per_season).mean().to_dict()  # average over seasons, not pooled extremes
+        row.update({"manager": str(mgr), "n_picks": len(g)})
+        rows.append(row)
     return pd.DataFrame(rows).set_index("manager")
 
 
@@ -96,3 +96,70 @@ def spectral_clusters(features: pd.DataFrame, k: int | None = None, k_max: int =
     labels = KMeans(n_clusters=k, n_init=20, random_state=seed).fit_predict(U) if n > k else np.arange(n)
     emb = vecs[:, 1:3] if n > 2 else np.column_stack([vecs[:, 1], np.zeros(n)])
     return SpectralResult(features, W, vals, emb, vecs[:, 1], k, labels)
+
+
+# Plain-language description of each behaviour feature: (high phrase, low phrase)
+FEATURE_PHRASES = {
+    "first_goalie_round": ("waits on goalies", "grabs goalies early"),
+    "g_share_early": ("goalies early", "skaters early"),
+    "reach_early": ("reaches ahead of the rankings", "sticks to the rankings"),
+    "mean_reach": ("reaches ahead of the rankings", "sticks to the rankings"),
+    "d_share_early": ("defensemen early", "forwards early"),
+    "homer_index": ("favours one NHL team", "spreads across NHL teams"),
+    "auto_share": ("often autodrafts", "drafts by hand"),
+    "n_goalies": ("stockpiles goalies", "carries few goalies"),
+}
+
+
+def name_clusters(res: SpectralResult) -> dict[int, dict]:
+    """Name each cluster from what distinguishes it (centroid z-scores vs the league).
+
+    Returns {cluster: {"name", "traits", "members"}}; names are chosen by rules on the two most
+    distinctive traits so they stay honest to the data.
+    """
+    X = res.features.drop(columns=["n_picks"], errors="ignore").astype(float)
+    X = X.fillna(X.mean())
+    z = (X - X.mean()) / X.std(ddof=0).replace(0, 1)
+    out = {}
+    for c in sorted(set(res.labels)):
+        cz = z[res.labels == c].mean()
+        traits: list[str] = []
+        for f in cz.abs().sort_values(ascending=False).index:
+            if f in FEATURE_PHRASES:
+                t = FEATURE_PHRASES[f][0] if cz[f] > 0 else FEATURE_PHRASES[f][1]
+                if t not in traits:
+                    traits.append(t)
+            if len(traits) == 3:
+                break
+        members = z[res.labels == c]
+
+        def shared(feature: str, sign: int, share: float = 0.7) -> bool:
+            """True if the group leans this way on average AND most members lean the same way."""
+            if feature not in members:
+                return False
+            return sign * cz[feature] > 0.3 and float(((sign * members[feature]) > 0).mean()) >= share
+
+        if shared("first_goalie_round", -1) and shared("reach_early", 1):
+            name = "Aggressive Reachers"
+        elif shared("first_goalie_round", -1):
+            name = "Goalie Grabbers"
+        elif shared("first_goalie_round", 1) and shared("d_share_early", 1):
+            name = "Blue-line Builders"
+        elif shared("first_goalie_round", 1):
+            name = "Patient Builders"
+        elif shared("reach_early", 1):
+            name = "Reachers"
+        elif shared("reach_early", -1, 0.6):
+            name = "By-the-Book Drafters"
+        elif shared("homer_index", 1):
+            name = "Team Loyalists"
+        else:
+            name = "Balanced Drafters"
+        out[int(c)] = {"name": name, "traits": traits, "members": list(res.features.index[res.labels == c])}
+    # make duplicate names unique
+    seen: dict[str, int] = {}
+    for c, v in out.items():
+        seen[v["name"]] = seen.get(v["name"], 0) + 1
+        if seen[v["name"]] > 1:
+            v["name"] = f"{v['name']} ({v['traits'][0]})"
+    return out

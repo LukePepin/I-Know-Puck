@@ -4,7 +4,7 @@ Own model ("Marcel+"):
   1. per-game rate for each stat = recency-weighted history (weights 5/4/3 by GP),
      regressed toward the position mean with a per-stat shrinkage constant R fit on past seasons
   2. optional MoneyPuck residual correction (ridge on xG-luck, PP time, TOI) -> ablation-testable
-  3. games-played model: linear on prior two seasons' share of schedule
+  3. games-played model: linear on the prior three seasons' share of schedule (injury history)
 
 Blend: final_k = w_k * own_k + (1 - w_k) * espn_k, with w_k fit by least squares on past seasons.
 """
@@ -85,7 +85,7 @@ class OwnModel:
         last = hist.sort_values("season").groupby("player_id").tail(1).set_index("player_id")
         out["pos"] = last["pos"]
         out["name"] = last["name"]
-        for lag in (1, 2):
+        for lag in (1, 2, 3):
             s = hist[hist.lag == lag].set_index("player_id")
             out[f"gpfrac_{lag}"] = (s["gp"] / season_games(target - lag)).reindex(out.index)
         mp_last = hist[hist.lag == 1].set_index("player_id")
@@ -117,9 +117,13 @@ class OwnModel:
         return pd.DataFrame(out, index=feats.index)
 
     def _gp_design(self, feats: pd.DataFrame) -> np.ndarray:
-        g1 = feats["gpfrac_1"].fillna(0).clip(0, 1)
-        g2 = feats["gpfrac_2"].fillna(0).clip(0, 1)
-        return np.column_stack([np.ones(len(feats)), g1, g2, feats["gpfrac_1"].isna(), feats["gpfrac_2"].isna()]).astype(float)
+        """Games-played model inputs: share of the schedule played in each of the last three seasons
+        (so a history of injuries lowers the projection) plus missing-season indicators."""
+        cols = [np.ones(len(feats))]
+        for lag in (1, 2, 3):
+            c = feats.get(f"gpfrac_{lag}", pd.Series(np.nan, index=feats.index))
+            cols += [c.fillna(0).clip(0, 1), c.isna()]
+        return np.column_stack(cols).astype(float)
 
     # --- fit / predict ------------------------------------------------------------------------
     def fit(self, panel: pd.DataFrame, targets: list[int]) -> "OwnModel":

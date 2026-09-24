@@ -17,7 +17,9 @@ from .data.espn import EspnClient, EspnError
 from .draft import DraftContext
 from .opponents import OpponentModel, build_observations
 from .projections import Blender, MarketAdjuster, OwnModel, fill_projection, modeled_stats, season_frame
-from .spectral import SpectralResult, manager_features, spectral_clusters
+from .spectral import SpectralResult, manager_features, name_clusters, spectral_clusters
+from .history import History, build_history, partial_residual, spearman_ci
+from .injuries import apply_injuries, injury_history
 from .strategy import manager_seasons, season_outcomes, strategy_correlations
 from .valuation import PlayerPool, Valuator
 
@@ -45,6 +47,8 @@ class Bundle:
     proj_eval: pd.DataFrame = field(default_factory=pd.DataFrame)  # out-of-sample projection vs actual
     strategy: pd.DataFrame = field(default_factory=pd.DataFrame)  # manager-season behaviour + outcomes
     strategy_cor: pd.DataFrame = field(default_factory=pd.DataFrame)
+    history: History | None = None
+    cluster_names: dict = field(default_factory=dict)
     source: str = "blend"
     notes: list[str] = field(default_factory=list)
 
@@ -60,10 +64,16 @@ class Bundle:
             out[tid] = names.get(oid, out.get(tid, f"Team {tid}"))
         return out
 
-    def context(self, first_round: list[int] | None = None, my_team: int | None = None) -> DraftContext:
+    def context(self, first_round: list[int] | None = None, my_team: int | None = None, pool: PlayerPool | None = None) -> DraftContext:
         order = first_round or self.settings.pick_order or list(range(1, self.settings.n_teams + 1))
         me = my_team or self.settings.my_team_id or order[0]
-        return DraftContext(self.pool, self.valuator, order, me, self.sim_opp or self.opp_model, self.manager_of_team)
+        pool = pool or self.pool
+        val = self.valuator if pool is self.pool else Valuator(pool)
+        return DraftContext(pool, val, order, me, self.sim_opp or self.opp_model, self.manager_of_team)
+
+    def injured_pool(self, overrides: dict[int, int], defaults: dict[str, int] | None = None) -> PlayerPool:
+        """Pool with projections scaled for current injuries/suspensions (defaults + user overrides)."""
+        return PlayerPool(apply_injuries(self.pool.frame, self.stats, overrides, defaults), self.settings, self.stats)
 
 
 def fantasy_points(frame: pd.DataFrame, settings: LeagueSettings, prefix: str) -> pd.Series:
@@ -133,6 +143,7 @@ def build(season: int | None = None, refresh: bool = False, source: str = "blend
     drafts = pd.DataFrame()
     teams = pd.DataFrame()
     managers = pd.DataFrame()
+    cluster_names: dict = {}
     spec = None
     opp = OpponentModel()
     manager_of_team: dict[int, str] = {}
@@ -146,9 +157,10 @@ def build(season: int | None = None, refresh: bool = False, source: str = "blend
         except EspnError as e:
             notes.append(f"League history unavailable: {e}")
     if len(drafts):
-        drafts = drafts.merge(panel[["season", "player_id", "pos"]].drop_duplicates(["season", "player_id"]), on=["season", "player_id"], how="left")
+        drafts = drafts.merge(panel[["season", "player_id", "pos", "adp"]].drop_duplicates(["season", "player_id"]), on=["season", "player_id"], how="left")
         feats = manager_features(drafts, panel)
         spec = spectral_clusters(feats)
+        cluster_names = name_clusters(spec)
         opp.group_of_manager = spec.groups()
         obs = build_observations(drafts, panel, settings.lineup)
         opp.fit(obs, per_manager=True)
@@ -159,18 +171,45 @@ def build(season: int | None = None, refresh: bool = False, source: str = "blend
         notes.append("No draft history: opponents follow ADP with default noise.")
 
     strategy = strategy_cor = pd.DataFrame()
+    history = None
     if len(drafts):
+        past = sorted(drafts.season.unique().tolist())
         try:
-            past = sorted(drafts.season.unique().tolist())
-            strategy = manager_seasons(drafts, panel, season_outcomes(client, past), settings)
-            strategy_cor = strategy_correlations(strategy)
+            history = build_history(client, drafts, panel, settings, past, extra_player_ids=pool_frame.player_id.astype(int).tolist())
         except Exception as e:  # descriptive extra; never block the draft tool
+            notes.append(f"League history (transactions / game logs) skipped: {e}")
+        try:
+            strategy = manager_seasons(drafts, panel, season_outcomes(client, past), settings)
+            if history is not None:
+                strategy = enrich_strategy(strategy, history, drafts)
+            strategy_cor = strategy_correlations(strategy)
+        except Exception as e:
             notes.append(f"Strategy analysis skipped: {e}")
+        if history is not None and len(history.avail):
+            risk = injury_history(history.avail, past)
+            cur = cur.merge(risk, on="player_id", how="left")
+            pool_frame = pool_frame.merge(risk, on="player_id", how="left")
+            pool = PlayerPool(pool_frame, settings, stats)
+            valuator = Valuator(pool)
 
     b = Bundle(season, settings, stats, cur, pool, valuator, opp, manager_of_team, teams, drafts, spec, blender.w_, managers, source, notes)
     b.sim_opp = sim_opp if len(drafts) else opp
     b.market = market
     b.proj_eval, b.strategy, b.strategy_cor = proj_eval, strategy, strategy_cor
+    b.history, b.cluster_names = history, cluster_names
     with open(path, "wb") as fh:
         pickle.dump(b, fh)
     return b
+
+
+def enrich_strategy(strategy: pd.DataFrame, history: History, drafts: pd.DataFrame) -> pd.DataFrame:
+    """Add in-season activity, injury luck, same-team stacking and points-by-source to each manager-season.
+    Draft value is split into skill (value if everyone had average injury luck) + injury luck."""
+    out = strategy.copy()
+    for extra in (history.activity(), history.injury_luck(drafts), history.stacking(drafts), history.points_by_source()):
+        if len(extra):
+            keep = [c for c in extra.columns if c not in out.columns or c in ("season", "owner_id")]
+            out = out.merge(extra[keep], on=["season", "owner_id"], how="left")
+    if "injury_luck" in out:
+        out["draft_skill"] = out["value_added_all"] - out["injury_luck"]
+    return out

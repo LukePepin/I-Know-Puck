@@ -12,9 +12,13 @@ descriptive evidence, not causal estimates.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import pandas as pd
 from scipy import stats as sps
+
+warnings.filterwarnings("ignore", message="An input array is constant")
 
 from .config import LeagueSettings
 from .data.espn import EspnClient
@@ -76,6 +80,13 @@ STRATEGY_COLS = {
     "value_added_r1_6": "Draft value added, rounds 1-6 (actual pts vs slot)",
     "value_added_all": "Draft value added, all rounds",
     "haul_top16": "Actual pts of best 16 drafted players",
+    "draft_skill": "Draft skill (value added, injuries evened out)",
+    "injury_luck": "Injury luck (points not lost to injuries vs league)",
+    "pickups_pct_rank": "Waiver activity (rank within season)",
+    "lineup_moves_pct_rank": "Lineup changes (rank within season)",
+    "trades": "Trades made",
+    "top_count": "Most players from one NHL team (stacking)",
+    "share_waiver / free agent": "Share of points from pickups",
 }
 OUTCOME_COLS = {"win_pct": "Win %", "points_for": "Points for", "final_rank": "Final rank (1 = best)"}
 
@@ -84,6 +95,8 @@ def strategy_correlations(ms: pd.DataFrame, n_boot: int = 4000, seed: int = 0) -
     rng = np.random.default_rng(seed)
     rows = []
     for x, xl in STRATEGY_COLS.items():
+        if x not in ms:
+            continue
         for y, yl in OUTCOME_COLS.items():
             m = ms[[x, y]].dropna()
             if len(m) < 8:
@@ -99,3 +112,17 @@ def strategy_correlations(ms: pd.DataFrame, n_boot: int = 4000, seed: int = 0) -
     out.loc[flip, ["rho", "ci_low", "ci_high"]] = -out.loc[flip, ["rho", "ci_high", "ci_low"]].to_numpy()
     out["outcome"] = out["outcome"].replace({OUTCOME_COLS["final_rank"]: "Final standing (higher = better)"})
     return out
+
+
+def beyond_draft(ms: pd.DataFrame, cols: list[str], outcome: str = "win_pct", control: str = "value_added_all", seed: int = 0) -> pd.DataFrame:
+    """Association of each in-season habit with the outcome AFTER removing what draft quality explains."""
+    from .history import partial_residual, spearman_ci
+
+    resid = partial_residual(ms[outcome], ms[control])
+    rows = []
+    for c in cols:
+        if c not in ms:
+            continue
+        r, lo, hi, p, n = spearman_ci(ms.loc[resid.index, c], resid, seed=seed)
+        rows.append({"habit": STRATEGY_COLS.get(c, c), "rho": r, "ci_low": lo, "ci_high": hi, "p": p, "n": n})
+    return pd.DataFrame(rows)

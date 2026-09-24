@@ -11,3 +11,6 @@ __pycache__/
 data/cache/
 runs/
 *.egg-info/
+
+# personal injury overrides entered in the app
+data/injury_overrides.json
