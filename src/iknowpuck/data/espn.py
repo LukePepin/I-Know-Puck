@@ -108,6 +108,26 @@ class EspnClient:
         raw = self.league_raw(season, ["mSettings"])
         return list(raw.get("settings", {}).get("draftSettings", {}).get("pickOrder", []))
 
+    def managers(self, seasons: list[int]) -> pd.DataFrame:
+        """One row per manager (ESPN member id) across seasons: name, which team slot each season.
+        Managers are identified by account id, never by team id, because team slots change hands."""
+        teams = pd.concat([self.teams(s) for s in seasons], ignore_index=True)
+        latest = max(seasons)
+        rows = []
+        for oid, g in teams.groupby("owner_id"):
+            g = g.sort_values("season")
+            rows.append(
+                {
+                    "owner_id": oid,
+                    "manager": g["owner_name"].iloc[-1],
+                    "seasons": g["season"].tolist(),
+                    "team_by_season": dict(zip(g["season"].tolist(), g["team_id"].tolist())),
+                    "current_team_id": int(g.loc[g.season == latest, "team_id"].iloc[0]) if (g.season == latest).any() else None,
+                    "active": bool((g.season == latest).any()),
+                }
+            )
+        return pd.DataFrame(rows)
+
     def seasons_available(self) -> list[int]:
         raw = self.league_raw(self.creds.season, ["mStatus"])
         prev = raw.get("status", {}).get("previousSeasons", [])
@@ -193,10 +213,18 @@ def parse_teams(raw: dict, season: int) -> pd.DataFrame:
                 "team_id": t["id"],
                 "team_name": _team_name(t),
                 "owner_id": owner,
-                "owner_name": (m.get("displayName") or f"{m.get('firstName', '')} {m.get('lastName', '')}".strip() or str(owner)),
+                "owner_name": manager_name(m, owner),
             }
         )
     return pd.DataFrame(rows)
+
+
+def manager_name(member: dict, fallback: str | None = None) -> str:
+    """Prefer the real name; ESPN display names are often auto-generated 'ESPNfan123...'."""
+    full = f"{(member.get('firstName') or '').strip()} {(member.get('lastName') or '').strip()}".strip()
+    if full:
+        return " ".join(w[:1].upper() + w[1:] for w in full.split())
+    return member.get("displayName") or str(fallback)
 
 
 def parse_draft(raw: dict, season: int) -> pd.DataFrame:

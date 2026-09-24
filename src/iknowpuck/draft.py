@@ -253,3 +253,30 @@ def availability(ctx: DraftContext, picks: list[tuple[int, int]], n_rollouts: in
             acc += an
             n += 1
     return acc / max(n, 1)
+
+
+def predraft_plan(ctx: DraftContext, n_sims: int = 100, seed: int = 7) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Simulate whole drafts from my slot with the greedy policy.
+
+    Returns (targets, summary): for each of my picks, the players I most often end up taking and
+    how often; and the distribution of my final P(win weekly matchup) / weekly points.
+    """
+    my_picks = [p for p, t in enumerate(ctx.order) if t == ctx.my_team]
+    taken0, teams0 = ctx.initial_state([])
+    took: dict[int, dict[int, int]] = {p: {} for p in my_picks}
+    scores, weekly = [], []
+    for s in range(n_sims):
+        _, _, teams = ctx.rollout(taken0, teams0, 0, None, np.random.default_rng([seed, s]))
+        mine = teams[ctx.my_team].roster
+        for p, j in zip(my_picks, mine):
+            took[p][j] = took[p].get(j, 0) + 1
+        others = [teams[k].roster for k in ctx.teams if k != ctx.my_team]
+        scores.append(ctx.val.score(mine, others))
+        weekly.append(ctx.val.weekly_points(mine))
+    f = ctx.pool.frame
+    rows = []
+    for rnd, p in enumerate(my_picks, start=1):
+        for j, c in sorted(took[p].items(), key=lambda kv: -kv[1])[:3]:
+            rows.append({"round": rnd, "overall": p + 1, "name": f.loc[j, "name"], "pos": f.loc[j, "pos"], "adp": f.loc[j, "adp"], "proj_value": ctx.value[j], "share": c / n_sims})
+    summary = pd.DataFrame({"win_prob": scores, "weekly_points": weekly})
+    return pd.DataFrame(rows), summary

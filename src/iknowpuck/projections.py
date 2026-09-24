@@ -103,11 +103,11 @@ class OwnModel:
                 means[grp] = (rates[m].mul(w[m], axis=0).sum() / w[m].sum()).fillna(0)
         return pd.DataFrame(means).T
 
-    def _rates(self, feats: pd.DataFrame, r: dict[int, float]) -> pd.DataFrame:
-        pm = self._pos_means(feats)
+    def _rates(self, feats: pd.DataFrame, r: dict[int, float], only: list[int] | None = None, pm: pd.DataFrame | None = None) -> pd.DataFrame:
+        pm = self._pos_means(feats) if pm is None else pm
         g = _group(feats["pos"])
         out = {}
-        for k in self.stats:
+        for k in only or self.stats:
             prior = g.map(lambda x: pm.loc[x, k] if x in pm.index else 0.0)
             rk = r.get(k, 20.0)
             out[k] = (feats[f"w{k}"] + rk * prior) / (feats["wgp"] + rk)
@@ -136,16 +136,17 @@ class OwnModel:
         train = pd.concat(blocks)
         gp_t = train["act_30"]
         # 1) shrinkage constant per stat by grid search on GP-weighted squared rate error
+        pm = self._pos_means(train)
         for k in self.stats:
             y = train.get(f"act_{k}", pd.Series(0, index=train.index)).fillna(0) / gp_t
-            best = min(R_GRID, key=lambda rk: float(np.average((self._rates(train, {k: rk})[k] - y) ** 2, weights=gp_t)))
+            best = min(R_GRID, key=lambda rk: float(np.average((self._rates(train, {k: rk}, [k], pm)[k] - y) ** 2, weights=gp_t)))
             self.r_[k] = best
         # 2) MoneyPuck residual ridge
         if self.use_moneypuck:
             X = train[MP_FEATURES]
             self.mp_mu_, self.mp_sd_ = X.mean(), X.std().replace(0, 1)
             Xs = ((X - self.mp_mu_) / self.mp_sd_).fillna(0).values
-            base = self._rates(train, self.r_)
+            base = self._rates(train, self.r_, pm=pm)
             for k in self.stats:
                 if k in GOALIE_STATS:
                     continue
