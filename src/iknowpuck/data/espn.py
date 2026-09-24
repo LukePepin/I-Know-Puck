@@ -29,8 +29,9 @@ class EspnError(RuntimeError):
 
 
 class EspnClient:
-    def __init__(self, creds: Credentials, cache: DiskCache | None = None, timeout: float = 30):
+    def __init__(self, creds: Credentials, cache: DiskCache | None = None, timeout: float = 30, fresh: bool = False):
         self.creds = creds
+        self.fresh = fresh  # True: re-download current-season data (injury statuses, ADP) instead of using the cache
         self.cache = cache or DiskCache(CACHE_DIR)
         self.timeout = timeout
         self.session = requests.Session()
@@ -66,13 +67,13 @@ class EspnClient:
     def league_raw(self, season: int, views: list[str], max_age_s: float | None = None) -> dict:
         # Past seasons are immutable, so cache forever; the current season must refresh.
         if max_age_s is None and season >= self.creds.season:
-            max_age_s = 300
+            max_age_s = 0 if self.fresh else 300
         key = {"league": self.creds.league_id, "season": season, "views": sorted(views)}
         return self.cache.json("espn_league", key, lambda: self._league_raw(season, views), max_age_s=max_age_s)
 
     def players_raw(self, season: int, limit: int = 1200, max_age_s: float | None = None) -> list[dict]:
         if max_age_s is None:
-            max_age_s = DAY if season >= self.creds.season else None
+            max_age_s = (0 if self.fresh else DAY) if season >= self.creds.season else None
         flt = {
             "players": {
                 "limit": limit,

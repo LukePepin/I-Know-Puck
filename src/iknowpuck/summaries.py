@@ -146,6 +146,9 @@ PLAIN_MEANING = {
     ("H2a", "no"): "Chasing bargains loses, so the app does not do it.",
     ("H3", "tie"): "Individual manager habits are shown for scouting only; the simulator uses the league-wide model.",
     ("H4", "tie"): "The manager groups are shown for interest only.",
+    ("H4", "no"): "Grouping managers made pick predictions slightly worse, so the groups are used for scouting insight only.",
+    ("H3", "no"): "Per-manager models predicted picks worse, so the simulator uses the league-wide model.",
+    ("H1b", "tie"): "No clear gain, so the advanced stats could be dropped without losing accuracy.",
 }
 
 

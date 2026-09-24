@@ -408,8 +408,7 @@ elif section == "Injuries":
         fig = px.timeline(s, x_start="start", x_end="end", y="player", color="where", hover_data=["games", "drafted_by"],
                           color_discrete_map={"mid-season": RUST, "season start": SAND, "season end": GREY})
         fig.update_yaxes(autorange="reversed", title="")
-        fig.update_layout(title=f"Absences of 3+ games, {season_pick} (35 players with the most games missed)", xaxis_title="date", legend_title="when",
-                          margin=dict(l=170, r=20, t=50, b=50))
+        fig.update_layout(title=f"Absences of 3+ games, {season_pick} (35 players with the most games missed)", xaxis_title="date", legend_title="when")
         fig_show(fig, 60 + 18 * s.player.nunique())
         st.caption("Season-start absences can also mean the player started in the minors; mid-season absences are the clearest injury signal.")
     else:

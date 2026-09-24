@@ -72,7 +72,7 @@ with c3:
         st.markdown("#### After the draft")
         st.markdown(
             "9. **Open In-season moves once a week.** It lists the free agents who would raise your weekly points most, and who to drop.\n"
-            "10. **Stay active on the waiver wire.** In your league, managers who made more pickups won more, even after accounting for how well they drafted.\n"
+            "10. **Stay active on the waiver wire.** In your league, managers who made more pickups won more games than their draft alone predicted (borderline evidence). Strong drafters needed fewer pickups, so this is about making the most of the team you drafted.\n"
             "11. **Re-check injuries.** Lower the games-missed numbers as players return."
         )
 st.markdown("#### Rules of thumb from your league's history")

@@ -103,7 +103,7 @@ def build(season: int | None = None, refresh: bool = False, source: str = "blend
         with open(path, "rb") as fh:
             return pickle.load(fh)
 
-    client = EspnClient(creds)
+    client = EspnClient(creds, fresh=refresh)  # a rebuild re-downloads current injuries, ADP and rosters
     notes: list[str] = []
     try:
         settings = client.settings(season)
