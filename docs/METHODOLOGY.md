@@ -37,6 +37,11 @@ two seasons' share of the schedule.
 own-model predictions for the three prior seasons, so the weights never see the season they are
 applied to.
 
+**Market adjustment (winner's-curse guard).** For forwards, defense and goalies separately, actual fantasy
+points from past seasons are regressed on the blended projection and log(ADP), plus a no-ADP indicator.
+Each player's stat line is then rescaled so that their fantasy points equal the fitted value. Projection
+weights come out around 0.5–0.8, and lowest for goalies.
+
 ## 4. Valuation (objective function)
 
 Starters are assigned to slots by the Hungarian algorithm (`linear_sum_assignment`). Usage is 1 for
@@ -72,12 +77,15 @@ dominant axis of behavioral difference.
 
 ## 7. Draft recommender
 
-At pick t, candidates are the top-K players by VONA (value over the k-th best same-group player left at
-our next pick) plus the top ADP players. For each candidate, M rollouts finish the draft: opponents
-sample from their logit model (Gumbel-max), and our later picks use the VONA greedy policy. The final
-league is then scored. All candidates share the same random seeds (**common random numbers**), so
-candidate differences are paired. The app reports the mean, the gap to the best candidate, the paired
-SE of that gap, P(best), and each player's availability at our next pick.
+At pick t, candidates are the next roster-fitting players in the market (ADP) window, plus a few
+highest-VONA players so that large model disagreements are still shown. For each candidate, M rollouts
+finish the draft: opponents sample from the league-wide logit (Gumbel-max), and our later picks use the
+**market-anchored policy**, which takes the highest projected value among the next two roster-fitting
+players by ADP. (The projection-greedy VONA policy lost to ADP drafting in the backtest, see H2a.) The
+final league is then scored. All candidates share the same random seeds (**common random numbers**),
+so candidate differences are paired. The app reports the mean, the gap to the best candidate, the
+paired SE of that gap, P(best), and each player's availability at our next pick. Its "Suggested pick"
+is, among candidates within 2 SE of the best, the one least likely to be available at our next pick.
 
 ## 8. Experimental design (the "wheel")
 
