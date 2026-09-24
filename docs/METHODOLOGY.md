@@ -91,15 +91,33 @@ p-value (primary), Wilcoxon and t-test p-values, and **Holm–Bonferroni** adjus
 |---|---|---|---|
 | H1 | blend < ESPN error | player-season, held out 2024–26 | abs fantasy-point error |
 | H1b | MoneyPuck features reduce own-model error | player-season | abs error |
-| H2 | VONA policy > ADP drafting | (season, slot, seed), rosters scored on **actual** stats | P(win weekly matchup) |
+| H2 | market-anchored policy > ADP drafting | (season, slot, seed), rosters scored on **actual** stats | P(win weekly matchup) |
+| H2a | projection-greedy (VONA) policy > ADP drafting | same as H2 | P(win weekly matchup) |
 | H3 | per-manager + spectral logit > league-wide logit | held-out pick (leave-one-season-out) | log-likelihood |
 | H4 | spectral pooling > independent shrinkage | held-out pick | log-likelihood |
+
+### Results (two independent runs, seeds 0 and 1, identical verdicts)
+
+| ID | Result |
+|---|---|
+| H1 | Supported: 4.65 fewer fantasy points of absolute error per player (95% CI 3.8 to 5.4), Holm p < 0.001 |
+| H1b | Supported but small: 0.35 points (CI 0.12 to 0.59) |
+| H2 | No difference: +0.005 and -0.001 P(win) in the two runs (CIs within about +/-0.02) |
+| H2a | Rejected: -0.083 and -0.100 P(win); the policy was removed from the engine |
+| H3 | No difference: per-manager models do not predict held-out picks better |
+| H4 | No difference: spectral pooling does not help |
+
+Two data problems were found and fixed along the way: ESPN's undrafted ADP sentinel (about 230) had let
+end-of-season % owned leak into tie-breaks, and 2026's historical ADP had been wiped, so ESPN's
+preseason rank stands in for missing ADP.
 
 ## 9. Known limitations / next experiments
 
 - The weekly variance constants (dispersion, covariance inflation, bench usage) are priors. They should
   be calibrated against the league's own weekly matchup scores (ESPN `mMatchup`).
-- The H2 backtest compares the base policy against ADP. The full MC recommender costs about 26×
+- The H2 backtest compares the base policy against ADP. The full MC recommender costs about 26x
   more per draft and deserves its own backtest (H2b).
+- League strategy associations (strategy.py) come from 36 manager-seasons with about 24 comparisons;
+  they are descriptive and would not all survive a family-wise correction.
 - Historical ADP is ESPN's season-level ADP, not what was shown on each draft day.
 - Injuries and preseason depth-chart news reach the model only through ESPN's projections.
