@@ -1,0 +1,13 @@
+# secrets
+.env
+
+# environments
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# data cache and run outputs (reproducible from code)
+data/cache/
+runs/
+*.egg-info/
