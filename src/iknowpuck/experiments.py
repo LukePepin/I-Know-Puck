@@ -2,8 +2,9 @@
 
 H1  blend projections beat ESPN projections        unit: player-season (held-out 2024-26), |fantasy-pt error|
 H1b MoneyPuck features improve the own model        unit: player-season, |fantasy-pt error|
-H2  VONA draft policy beats ADP drafting            unit: (season, draft slot, seed); final roster scored on
+H2  market-anchored policy beats ADP drafting      unit: (season, draft slot, seed); final roster scored on
                                                     ACTUAL season stats -> P(win weekly matchup) vs the league
+H2a projection-greedy (VONA) beats ADP drafting     same design; kept as a documented negative result
 H3  per-manager logit predicts picks better than a  unit: held-out pick (leave-one-season-out), log-likelihood
     league-wide ADP logit
 H4  spectral-cluster pooling improves per-manager   unit: held-out pick, log-likelihood
@@ -26,7 +27,7 @@ from .data.espn import EspnClient
 from .draft import DraftContext
 from .opponents import OpponentModel, build_observations
 from .pipeline import FIRST_PANEL_SEASON, fantasy_points
-from .projections import Blender, OwnModel, fill_projection, modeled_stats, season_frame
+from .projections import Blender, MarketAdjuster, OwnModel, fill_projection, modeled_stats, season_frame
 from .spectral import manager_features, spectral_clusters
 from .valuation import PlayerPool, Valuator
 
@@ -94,14 +95,26 @@ def h1b(seed: int) -> ExperimentOutput:
 
 # --- H2 ----------------------------------------------------------------------------------------
 def _backtest_context(season: int, opp: OpponentModel, mgr: dict[int, str]) -> tuple[DraftContext, Valuator]:
+    """Draft pool for a past season using only information available before it: blend projections
+    fit on earlier seasons, market-adjusted with a regression fit on earlier seasons. Rosters are
+    then scored on that season's ACTUAL stats."""
     settings, panel, _ = _data()
     stats = modeled_stats(settings)
+    hist = []
+    for t in range(max(FIRST_PANEL_SEASON + 5, season - 3), season):
+        h = _season_projection(t).copy()
+        h["bp"] = fantasy_points(h, settings, "blend")
+        h["ap"] = fantasy_points(h, settings, "act").where(h.act_30.notna())
+        hist.append(h)
     f = _season_projection(season)
     f = f[(f.adp.notna()) | (f.blend_30.fillna(0) > 0)].copy()
     proj = fill_projection(f, stats, "blend")
     proj = proj.assign(_k=np.where(proj.adp.notna(), proj.adp, 1000)).nsmallest(700, "_k").drop(columns="_k").reset_index(drop=True)
-    pool_proj = PlayerPool(proj, settings, stats)
     truth = fill_projection(proj, stats, "act")
+    if hist:
+        proj["bp"] = fantasy_points(proj, settings, "p")
+        proj = MarketAdjuster().fit(pd.concat(hist), "bp", "ap").apply(proj, stats, "bp")
+    pool_proj = PlayerPool(proj, settings, stats)
     pool_true = PlayerPool(truth, settings, stats)
     order = settings.pick_order or list(range(1, settings.n_teams + 1))
     ctx = DraftContext(pool_proj, Valuator(pool_proj), order, order[0], opp, mgr)
@@ -130,29 +143,42 @@ def _run_draft(ctx: DraftContext, me: int, policy, rng) -> dict[int, list[int]]:
     return {k: v.roster for k, v in teams.items()}
 
 
-def h2(seed: int, n_seeds: int = 4) -> ExperimentOutput:
+def _h2_scores(seed: int, n_seeds: int = 3) -> dict[str, np.ndarray]:
     settings, panel, drafts = _data()
     opp = OpponentModel().fit(build_observations(drafts, panel, settings.lineup), per_manager=False)
-    base, treat, rows = [], [], []
+    out: dict[str, list[float]] = {"adp": [], "market": [], "vona": []}
     for season in TEST_SEASONS:
         ctx, v_true = _backtest_context(season, opp, {})
-        adp_pol = _adp_policy(ctx)
-
-        def vona_pol(t, taken, p):
-            avail, sc = ctx.greedy_scores(t, taken, p)
-            return int(avail[np.argmax(sc)])
-
+        pols = {
+            "adp": _adp_policy(ctx),
+            "market": lambda t, taken, p: ctx.market_choice(t, taken),
+            "vona": lambda t, taken, p: int((lambda a_s: a_s[0][np.argmax(a_s[1])])(ctx.greedy_scores(t, taken, p))),
+        }
         for me in ctx.teams:
             ctx.my_team = me
             for s in range(n_seeds):
-                out = []
-                for pol in (adp_pol, vona_pol):
+                for name, pol in pols.items():
                     rosters = _run_draft(ctx, me, pol, np.random.default_rng([seed, season, me, s]))
                     others = [r for k, r in rosters.items() if k != me]
-                    out.append(v_true.score(rosters[me], others))
-                base.append(out[0]); treat.append(out[1])
-                rows.append((season, me, s))
-    return ExperimentOutput(np.array(base), np.array(treat), unit="(season, slot, seed) scored on actual stats", extras={"n_seeds": n_seeds})
+                    out[name].append(v_true.score(rosters[me], others))
+    return {k: np.array(v) for k, v in out.items()}
+
+
+@lru_cache(maxsize=2)
+def _h2_cached(seed: int):
+    return _h2_scores(seed)
+
+
+def h2(seed: int) -> ExperimentOutput:
+    r = _h2_cached(seed)
+    return ExperimentOutput(r["adp"], r["market"], unit="(season, slot, seed) scored on actual stats",
+                            extras={"mean_adp": float(r["adp"].mean()), "mean_market": float(r["market"].mean())})
+
+
+def h2a(seed: int) -> ExperimentOutput:
+    r = _h2_cached(seed)
+    return ExperimentOutput(r["adp"], r["vona"], unit="(season, slot, seed) scored on actual stats",
+                            extras={"mean_vona": float(r["vona"].mean())})
 
 
 # --- H3 / H4 -----------------------------------------------------------------------------------
@@ -192,9 +218,12 @@ def suite(quick: bool = False) -> list[Experiment]:
                    "pick log-likelihood", "independent per-manager", "spectral-pooled per-manager", h4),
     ]
     if not quick:
-        exps.append(Experiment("H2", "VONA draft policy yields higher actual P(win weekly matchup) than drafting by ADP",
-                               "Equal P(win)", "P(win weekly matchup), actual stats", "ADP drafting", "VONA policy", h2,
-                               config={"seasons": TEST_SEASONS, "n_seeds": 4}))
+        exps.append(Experiment("H2", "Market-anchored policy yields higher actual P(win weekly matchup) than drafting by ADP",
+                               "Equal P(win)", "P(win weekly matchup), actual stats", "ADP drafting", "market-anchored policy", h2,
+                               config={"seasons": TEST_SEASONS, "n_seeds": 3, "window": 2}))
+        exps.append(Experiment("H2a", "Projection-greedy (VONA) policy beats ADP drafting",
+                               "Equal P(win)", "P(win weekly matchup), actual stats", "ADP drafting", "VONA policy", h2a,
+                               config={"seasons": TEST_SEASONS, "n_seeds": 3}))
     return exps
 
 

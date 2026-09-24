@@ -21,6 +21,7 @@ from ..config import CACHE_DIR, POSITION_NAMES, STAT_NAMES, Category, Credential
 BASE = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/fhl"
 HEADERS = {"User-Agent": "Mozilla/5.0 (i-know-puck research tool)", "Accept": "application/json"}
 DAY = 24 * 3600
+ADP_CEILING = 229.0  # ESPN's "undrafted" ADP sentinel region
 
 
 class EspnError(RuntimeError):
@@ -166,8 +167,14 @@ def parse_players(raw: list[dict], season: int) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     for c in ("adp", "espn_rank", "pct_owned", *[c for c in df.columns if c.startswith(("act_", "proj_"))]):
         df[c] = pd.to_numeric(df[c], errors="coerce").replace([np.inf, -np.inf], np.nan)
-    # ESPN uses 0/170 etc. as sentinels for undrafted; treat non-positive as missing
-    df.loc[df["adp"] <= 0, "adp"] = np.nan
+    # ESPN parks undrafted players at ~230 ADP (0 in some seasons) and wiped 2026's ADP entirely.
+    # Keep genuine ADP; otherwise fall back to ESPN's preseason rank (Spearman ~0.97 with ADP).
+    df["adp_raw"] = df["adp"]
+    df.loc[(df["adp"] <= 0) | (df["adp"] >= ADP_CEILING), "adp"] = np.nan
+    df["adp"] = df["adp"].fillna(df["espn_rank"])
+    # The API returns players sorted by *current* % owned; for past seasons that is hindsight.
+    # Shuffle deterministically so no downstream tie-break can leak it.
+    df = df.sample(frac=1.0, random_state=season).reset_index(drop=True)
     df.loc[df["espn_rank"] <= 0, "espn_rank"] = np.nan
     return df
 

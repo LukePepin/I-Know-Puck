@@ -3,7 +3,8 @@
 Recommendation = argmax over candidates c of  E[ score(my final roster) | I take c now ],
 estimated by rolling the rest of the draft forward M times:
   - opponents pick by sampling their conditional-logit model (per-manager tendencies)
-  - my later picks follow a fast greedy policy (value over next available, VONA)
+  - my later picks follow the market-anchored policy (best projected value among the next two
+    players by ADP); a pure projection-greedy (VONA) policy lost to ADP in the backtest (H2a)
   - the finished league is scored with the Valuator (P(win weekly matchup) vs the 11 real rosters)
 Every candidate is evaluated on the same M random seeds (common random numbers), so the
 comparison between candidates is paired and far less noisy than independent rollouts.
@@ -76,7 +77,7 @@ class DraftContext:
         self.targets = default_target_counts(self.st.lineup)
         self.slot_cap = {s: c for s, c in self.st.lineup.items() if s != IR_SLOT}
         self.slot_col = {s: pool.slot_types.index(s) for s in self.slot_cap}
-        self.max_goalies = self.st.lineup.get(5, 2) + 2
+        self.max_goalies = self.st.lineup.get(5, 2) + 1
 
     # --- state helpers ------------------------------------------------------------------------
     def new_team(self) -> TeamState:
@@ -117,18 +118,38 @@ class DraftContext:
 
     # --- policies -----------------------------------------------------------------------------
     def greedy_scores(self, t: TeamState, taken: np.ndarray, pick_no: int, avail: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
-        """VONA: usage-weighted value minus the value of the best same-group player expected to
-        remain at my next pick (approximated as the k-th best remaining, k = picks until then)."""
+        """VONA: usage-weighted value minus the best same-group value the market is expected to
+        leave for my next pick. 'Expected to leave' = available players ranked beyond the next k
+        by ADP (k = picks until my next turn), which is the classic value-over-next-available."""
         if avail is None:
             avail = np.flatnonzero(~taken)
         v = self.value[avail]
         u = self.starter_fit(t, avail)
         k = self.picks_until_next(pick_no)
+        by_adp = avail[np.argsort(self.adp[avail])]
+        survivors = by_adp[k:] if k > 0 else by_adp[:0]
         repl = np.zeros(3)
         for g in range(3):
-            vals = np.sort(v[self.grp[avail] == g])[::-1]
-            repl[g] = vals[min(k, len(vals) - 1)] if len(vals) else 0.0
-        return avail, u * (v - repl[self.grp[avail]]) + 1e-6 * v
+            sv = self.value[survivors[self.grp[survivors] == g]]
+            repl[g] = sv.max() if len(sv) else 0.0
+        score = u * (v - repl[self.grp[avail]]) + 1e-3 * u * v
+        n_g = sum(1 for x in t.groups if x == 2)
+        if n_g >= self.max_goalies:
+            score = np.where(self.grp[avail] == 2, -np.inf, score)
+        return avail, score
+
+    def market_choice(self, t: TeamState, taken: np.ndarray, window: int = 2) -> int:
+        """Market-anchored base policy (won the backtest): among the next ``window`` roster-fitting
+        players by ADP, take the one with the highest (market-adjusted) projected value."""
+        av = self.adp_order[~taken[self.adp_order]]
+        fit = self.starter_fit(t, av)
+        n_g = sum(1 for x in t.groups if x == 2)
+        if n_g >= self.max_goalies:
+            fit = np.where(self.grp[av] == 2, 0.0, fit)
+        cand = av[fit > 0.5][:window] if (fit > 0.5).any() else av[fit > 0][:window]
+        if not len(cand):
+            return int(av[0])
+        return int(cand[np.argmax(self.value[cand])])
 
     def picks_until_next(self, pick_no: int) -> int:
         me = self.order[pick_no] if pick_no < len(self.order) else self.my_team
@@ -167,8 +188,7 @@ class DraftContext:
                 if first is not None and not first_done:
                     j = first
                 else:
-                    avail, sc = self.greedy_scores(t, taken, p)
-                    j = int(avail[np.argmax(sc)])
+                    j = self.market_choice(t, taken)
                 first_done = True
             else:
                 j = self.opponent_pick(tid, t, taken, p, rng)
@@ -195,9 +215,13 @@ def recommend(
     taken, teams = ctx.initial_state(picks)
     on_clock = ctx.order[pick_no]
     avail, sc = ctx.greedy_scores(teams[on_clock], taken, pick_no)
-    top_greedy = avail[np.argsort(-sc)[:n_candidates]]
-    top_adp = ctx.adp_order[~taken[ctx.adp_order]][: max(3, n_candidates // 3)]
-    cands = list(dict.fromkeys([*top_greedy.tolist(), *[j for j in top_adp.tolist() if ctx.starter_fit(teams[on_clock], np.array([j]))[0] > 0]]))
+    # Candidates are mostly the market window (backtests show projection-only reaches lose),
+    # plus a few highest-VONA players so large model disagreements are still surfaced.
+    av_adp = ctx.adp_order[~taken[ctx.adp_order]]
+    fits = ctx.starter_fit(teams[on_clock], av_adp) > 0
+    window = av_adp[fits][: n_candidates]
+    top_vona = avail[np.argsort(-sc)[: max(2, n_candidates // 4)]]
+    cands = list(dict.fromkeys([*window.tolist(), *top_vona.tolist()]))
 
     scores = np.zeros((len(cands), n_rollouts))
     avail_next = np.zeros(len(ctx.pool))
@@ -231,6 +255,7 @@ def recommend(
             "proj_value": ctx.value[cands],
             "adp": f.loc[cands, "adp"].to_numpy(),
             "vona": [float(vona_of.get(c, np.nan)) for c in cands],
+            "market_rank": [int(np.flatnonzero(av_adp == c)[0]) + 1 if c in set(av_adp.tolist()) else -1 for c in cands],
             "win_prob": mean,
             "se": se,
             "gap_to_best": mean - mean.max(),

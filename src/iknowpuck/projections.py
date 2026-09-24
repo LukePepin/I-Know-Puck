@@ -227,3 +227,50 @@ def fill_projection(frame: pd.DataFrame, stats: list[int], source: str) -> pd.Da
         col = f"{source}_{k}"
         out[f"p_{k}"] = out[col].fillna(0.0) if col in out else 0.0
     return out
+
+
+@dataclass
+class MarketAdjuster:
+    """Combine our projection with the market (ADP) to avoid the winner's curse.
+
+    Fit on past seasons, per position group (F / D / G):
+        actual_pts = a + b * proj_pts + c * log(ADP) + d * 1{no ADP}
+    then every player's stat line is rescaled so its fantasy points equal the fitted value.
+    """
+
+    coef_: dict[str, np.ndarray] = field(default_factory=dict)
+    r2_: dict[str, float] = field(default_factory=dict)
+
+    @staticmethod
+    def _design(pts: pd.Series, adp: pd.Series) -> np.ndarray:
+        has = adp.notna()
+        la = np.log(adp.fillna(adp.max() if has.any() else 250).clip(lower=1))
+        return np.column_stack([np.ones(len(pts)), pts.to_numpy(float), np.where(has, la, 0.0), (~has).astype(float)])
+
+    def fit(self, frame: pd.DataFrame, pts_col: str, act_col: str) -> "MarketAdjuster":
+        f = frame[frame[act_col].notna() & frame[pts_col].notna()]
+        for g, sub in f.groupby(_group(f["pos"])):
+            X, y = self._design(sub[pts_col], sub["adp"]), sub[act_col].to_numpy(float)
+            beta = np.linalg.lstsq(X, y, rcond=None)[0]
+            self.coef_[g] = beta
+            self.r2_[g] = float(1 - ((y - X @ beta) ** 2).sum() / ((y - y.mean()) ** 2).sum())
+        return self
+
+    def adjusted_points(self, frame: pd.DataFrame, pts_col: str) -> pd.Series:
+        out = frame[pts_col].astype(float).copy()
+        for g, idx in frame.groupby(_group(frame["pos"])).groups.items():
+            if g in self.coef_:
+                out.loc[idx] = self._design(frame.loc[idx, pts_col], frame.loc[idx, "adp"]) @ self.coef_[g]
+        return out.clip(lower=0)
+
+    def apply(self, frame: pd.DataFrame, stats: list[int], pts_col: str) -> pd.DataFrame:
+        """Rescale p_<stat> columns so that fantasy points match the market-adjusted value."""
+        out = frame.copy()
+        adj = self.adjusted_points(out, pts_col)
+        factor = (adj / out[pts_col].where(out[pts_col] > 1)).clip(0.25, 2.0).fillna(1.0)
+        for k in stats:
+            c = f"p_{k}"
+            if c in out:
+                out[c] = out[c] * factor
+        out["mkt_factor"] = factor
+        return out
