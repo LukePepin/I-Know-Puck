@@ -39,7 +39,7 @@ def season_outcomes(client: EspnClient, seasons: list[int]) -> pd.DataFrame:
 
 def manager_seasons(drafts: pd.DataFrame, panel: pd.DataFrame, outcomes: pd.DataFrame, settings: LeagueSettings) -> pd.DataFrame:
     pl = panel[["season", "player_id", "adp", "pos"] + [c for c in panel.columns if c.startswith("act_")]].drop_duplicates(["season", "player_id"])
-    d = drafts.merge(pl, on=["season", "player_id"], how="left")
+    d = drafts.drop(columns=["pos", "adp"], errors="ignore").merge(pl, on=["season", "player_id"], how="left")
     d["act_pts"] = sum(d.get(f"act_{c.stat_id}", 0).fillna(0) * c.points for c in settings.scoring_categories)
     d["grp"] = d["pos"].map(group_of)
     d["mkt"] = d["adp"].fillna(d["overall"].max() + 30)

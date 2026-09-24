@@ -146,6 +146,7 @@ def build(season: int | None = None, refresh: bool = False, source: str = "blend
         except EspnError as e:
             notes.append(f"League history unavailable: {e}")
     if len(drafts):
+        drafts = drafts.merge(panel[["season", "player_id", "pos"]].drop_duplicates(["season", "player_id"]), on=["season", "player_id"], how="left")
         feats = manager_features(drafts, panel)
         spec = spectral_clusters(feats)
         opp.group_of_manager = spec.groups()

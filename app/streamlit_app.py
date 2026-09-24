@@ -20,6 +20,7 @@ from iknowpuck.config import RUNS_DIR, SLOT_NAMES, STAT_NAMES, load_credentials 
 from iknowpuck.data.espn import EspnClient, EspnError  # noqa: E402
 from iknowpuck.draft import availability, predraft_plan, recommend  # noqa: E402
 from iknowpuck.pipeline import build  # noqa: E402
+from iknowpuck.summaries import PLAIN_MEANING, PLAIN_QUESTIONS, league_takeaways, manager_reports, ordinal, plain_answer, position_timing, verdict  # noqa: E402
 from iknowpuck.valuation import WEEKS_IN_SEASON  # noqa: E402
 
 # --- look and feel -----------------------------------------------------------------------------------
@@ -69,9 +70,10 @@ def get_bundle(season: int, refresh_token: int):
     return build(season, refresh=refresh_token > 0)
 
 
-def latest_run() -> dict | None:
-    runs = sorted(RUNS_DIR.glob("*/results.json"), reverse=True) if RUNS_DIR.exists() else []
-    return json.loads(runs[0].read_text()) if runs else None
+def load_runs(n: int = 2) -> list[dict]:
+    """Most recent experiment-suite runs, newest first (used to show replication)."""
+    paths = sorted(RUNS_DIR.glob("*_ikp/results.json"), reverse=True) if RUNS_DIR.exists() else []
+    return [json.loads(p.read_text()) for p in paths[:n]]
 
 
 creds = load_credentials()
@@ -106,7 +108,6 @@ with st.sidebar:
 ctx = b.context(order, my_team)
 pool = b.pool.frame
 pid_to_idx = {int(p): i for i, p in enumerate(pool.player_id)}
-run = latest_run()
 
 
 def picks_as_idx() -> list[tuple[int, int]]:
@@ -128,210 +129,255 @@ tab_walk, tab_room, tab_plan, tab_players, tab_league, tab_research, tab_gloss =
 
 
 # ======================================================================================================
-# WALKTHROUGH
+# WALKTHROUGH (plain language first, technical details in expanders)
 # ======================================================================================================
 with tab_walk:
-    st.markdown("## How the recommendation is built")
+    me_name = names.get(my_team, "you")
+    slot = order.index(my_team) + 1 if my_team in order else None
+    timing = position_timing(b.drafts, S.n_teams)
+    n = S.n_teams
+    g_half, g_one, g_two = timing.get(f"G{n // 2}"), timing.get(f"G{n}"), timing.get(f"G{2 * n}")
+    pe = b.proj_eval
+
+    st.markdown("## Your draft, explained simply")
     st.markdown(
-        "This walkthrough follows the pipeline end to end: what data goes in, how each model works, how it was "
-        "tested, and what the evidence says you should do on draft day. Every chart below is computed from "
-        "your league's data."
+        f"This app helps **{me_name}** make the best pick every time it is your turn. "
+        "It looks at years of hockey stats and at how the people in your league have drafted before, "
+        "then plays out the rest of the draft many times to see which pick gives you the best chance "
+        "of winning each week."
     )
 
-    # 1. league -------------------------------------------------------------------------------------------
-    st.markdown("### 1. The decision problem")
+    # --- the short version -------------------------------------------------------------------------
+    st.markdown("### The short version")
+    short = [
+        "**Follow the rankings, but pick smart inside them.** The app suggests players close to where ESPN ranks them. Taking players much earlier than their ranking lost in our draft tests and never helped anyone in your league.",
+        "**Take forwards early.** In your league, teams that took lots of defensemen in the first six rounds won less often.",
+    ]
+    if g_one:
+        short.append(f"**Don't wait too long for a goalie.** In your league, about half the starting goalies are gone by round {g_half:.0f}, and one goalie per team is gone by round {g_one:.0f}.")
+    short += [
+        "**Good drafting really matters here.** Managers whose picks beat their draft spots finished near the top.",
+        "**When the app shows a tie, take the player least likely to come back to you.**",
+    ]
+    for s_ in short:
+        st.markdown(f"- {s_}")
+
+    # --- action checklist --------------------------------------------------------------------------
+    st.markdown("### Your game plan, step by step")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("#### Before the draft")
+        st.markdown(
+            f"1. **Check the left-hand panel.** \"My team\" should say **{me_name}**" + (f" and your draft slot should be **{slot}**." if slot else ".") + "\n"
+            "   If ESPN changed the pick order, press **Rebuild data and models**.\n"
+            "2. **Open the Pre-draft plan tab and press \"Simulate plan\".** Write down the two or three names it shows for each of your first few rounds.\n"
+            "3. **Press \"Compute availability\"** on the same tab. It shows how likely each top player is to still be there at your first pick.\n"
+            "4. **Read the League and strategy tab.** Note which managers grab goalies early; they will take goalies before you expect."
+        )
+    with c2:
+        st.markdown("#### During the draft")
+        st.markdown(
+            "5. **Turn on \"Live sync with ESPN draft\"** in the left-hand panel. Picks will appear by themselves.\n"
+            "6. **When the Draft room says \"You are on the clock\",** the app runs by itself. Read the green **Suggested pick** box and draft that player.\n"
+            "7. **Want a second opinion?** Look at the bar chart. Bars in the same blue are tied, so any of them is a good pick.\n"
+            "8. **If live sync stops working,** add each pick yourself with **Record a pick** (choose the player and the manager, then press Add).\n"
+            "9. **Made a mistake?** Press **Undo last pick**."
+        )
+    st.markdown("#### Rules of thumb from your league's history")
+    rules = ["Rounds 1 to 6: mostly forwards. Take a defenseman only if he is clearly the best player left."]
+    if g_one:
+        second = f"{round(g_two) - 2}" if g_two else "14"
+        rules.append(f"First goalie: by about round {max(2, round(g_one) - 1)}. Second goalie: by about round {second}.")
+    rules += ["Never reach far ahead of a player's ESPN ranking just because our projection likes him.",
+              "Late rounds: take the best projected player who fits an empty spot on your roster."]
+    for r_ in rules:
+        st.markdown(f"- {r_}")
+
+    # --- how it works ------------------------------------------------------------------------------
+    st.markdown("---")
+    st.markdown("### How it works, in seven simple steps")
+
+    st.markdown("#### Step 1. What wins in your league?")
     c1, c2 = st.columns([3, 2])
     with c1:
         w = pd.DataFrame([(c.name, c.points) for c in S.scoring_categories], columns=["stat", "points"]).sort_values("points")
         fig = go.Figure(go.Bar(x=w.points, y=w.stat, orientation="h", marker_color=[RUST if p < 0 else NAVY for p in w.points]))
-        fig.update_layout(title="Fantasy points per unit of each statistic", xaxis_title="points", yaxis_title="")
-        fig_show(fig, 360)
+        fig.update_layout(title="Points you get for each stat", xaxis_title="fantasy points", yaxis_title="")
+        fig_show(fig, 340)
     with c2:
-        slots = pd.DataFrame([(SLOT_NAMES.get(s, s), n) for s, n in S.lineup.items()], columns=["slot", "count"])
-        st.dataframe(slots, hide_index=True, use_container_width=True)
-        note(
-            f"{S.n_teams} teams draft {S.rounds} rounds in snake order. Each week you play one opponent and the team with "
-            "more fantasy points wins. The quantity we maximise is therefore <b>P(win a weekly matchup)</b>, not total "
-            "points: a roster's value depends on how its weekly score compares with the rosters the other managers "
-            "actually build."
+        st.markdown(
+            "Every week you play one other team. **Whoever scores more fantasy points wins that week.** "
+            "A goal is worth 2 points, an assist 1, a goalie win 4, and every goal a goalie allows costs 2 points (the red bar). "
+            f"There are {n} teams and {S.rounds} rounds, and the pick order reverses every round."
         )
+        note("<b>What the app aims for:</b> the team with the best chance of winning each week, not just the most total points.")
 
-    # 2. projections -------------------------------------------------------------------------------------
-    st.markdown("### 2. Projecting player seasons")
-    st.markdown(
-        "Three projections are combined. **ESPN** publishes a preseason projection. **Our own model** "
-        "(Marcel+) weights each player's last three seasons 5/4/3, shrinks per-game rates toward the position "
-        "average, and corrects with MoneyPuck features (expected goals, power-play time, ice time). The "
-        "**blend** is a per-statistic weighted average of the two, with weights estimated on seasons the model "
-        "never saw."
-    )
-    pe = b.proj_eval
+    st.markdown("#### Step 2. Guessing how good each player will be")
     if len(pe):
-        srcs = [("espn", "ESPN"), ("own", "Own model"), ("blend", "Blend"), ("market_adj", "Blend + market")]
+        srcs = [("espn", "ESPN's guess"), ("market_adj", "Our guess")]
         mae = pe.groupby("season").apply(lambda g: pd.Series({lab: (g[c] - g.actual).abs().mean() for c, lab in srcs})).reset_index()
-        c1, c2 = st.columns(2)
+        miss_ours = (pe.market_adj - pe.actual).abs().mean()
+        miss_espn = (pe.espn - pe.actual).abs().mean()
+        c1, c2 = st.columns([3, 2])
         with c1:
             fig = go.Figure()
             for i, (_, lab) in enumerate(srcs):
-                fig.add_bar(x=mae.season.astype(str), y=mae[lab], name=lab, marker_color=PALETTE[i])
-            fig.update_layout(barmode="group", title="Out-of-sample error by season", xaxis_title="season", yaxis_title="mean absolute error (fantasy pts)")
-            fig_show(fig)
+                fig.add_bar(x=mae.season.astype(str), y=mae[lab], name=lab, marker_color=[GREY, NAVY][i])
+            fig.update_layout(barmode="group", title="How far off each guess was (smaller is better)", xaxis_title="season", yaxis_title="average miss (fantasy points)")
+            fig_show(fig, 330)
         with c2:
-            lim = float(max(pe.blend.max(), pe.actual.max()))
-            fig = go.Figure()
-            fig.add_scatter(x=pe.espn, y=pe.actual, mode="markers", name="ESPN", marker=dict(color=GREY, size=5, opacity=0.45))
-            fig.add_scatter(x=pe.market_adj, y=pe.actual, mode="markers", name="Blend + market", marker=dict(color=NAVY, size=5, opacity=0.55))
-            fig.add_scatter(x=[0, lim], y=[0, lim], mode="lines", name="perfect", line=dict(color=RUST, dash="dash"))
-            fig.update_layout(title="Projected vs actual fantasy points", xaxis_title="projected", yaxis_title="actual")
-            fig_show(fig)
-        tot = {lab: (pe[c] - pe.actual).abs().mean() for c, lab in srcs}
-        note(
-            "How to read this: lower bars are better. Pooled over the held-out seasons the mean absolute error is "
-            + ", ".join(f"{k} {v:.1f}" for k, v in tot.items())
-            + " fantasy points per player. ESPN's projections are systematically optimistic (points sit below the dashed "
-            "line), which is why the blend leans toward our model for most statistics."
-        )
+            st.markdown(
+                "Before a season starts, nobody knows exactly how many points a player will score. ESPN makes a guess. "
+                "We make our own from each player's last three seasons plus advanced stats. "
+                f"Then we checked both against what really happened. **Our guess missed by about {miss_ours:.0f} points per player; "
+                f"ESPN's missed by about {miss_espn:.0f}.**"
+            )
+            note("<b>Why it matters:</b> better guesses mean better picks, especially when two players look alike.")
+        with st.expander("Technical details"):
+            st.markdown(
+                "Own model (Marcel+): recency-weighted per-game rates (5/4/3 by games played) shrunk toward the position mean with a "
+                "per-stat constant fit on past seasons; a ridge regression on MoneyPuck features (xG minus goals, power-play TOI, TOI, "
+                "shot attempts) corrects the residual; games played is a linear model on the previous two seasons. The blend weights "
+                "own vs ESPN per statistic by least squares on out-of-sample predictions, then the market adjustment in step 3 is applied. "
+                "The chart uses held-out seasons only."
+            )
 
-    # 3. market ------------------------------------------------------------------------------------------
-    st.markdown("### 3. Respecting the market: the winner's curse")
+    st.markdown("#### Step 3. Don't trust our guesses too much")
     st.markdown(
-        "A draft policy that simply takes the player our model likes most relative to ADP systematically picks "
-        "players whose projections happen to be too high. Across hundreds of noisy projections, the largest "
-        "disagreements with the market are disproportionately errors. We therefore regress actual points on "
-        "both our projection and log(ADP), separately for forwards, defense and goalies, and use the fitted value."
+        "Here is a trap: when our guess says a player is great but ESPN ranks him low, **we are usually the ones who are wrong.** "
+        "ESPN's rankings reflect things our numbers can't see, like injuries or a player losing his spot on the power play. "
+        "So the app **mixes our guess with the ranking** before it recommends anyone."
     )
     if b.market is not None and b.market.coef_:
-        c1, c2 = st.columns([2, 3])
-        with c1:
+        with st.expander("Technical details (the winner's curse)"):
             cf = pd.DataFrame([{"group": g, "weight on projection": c[1], "weight on log ADP": c[2], "R squared": b.market.r2_[g]} for g, c in b.market.coef_.items()])
             st.dataframe(cf.round(3), hide_index=True, use_container_width=True)
-        with c2:
-            adp_grid = np.linspace(1, 230, 100)
-            fig = go.Figure()
-            for i, (g, c) in enumerate(b.market.coef_.items()):
-                med = float(pool.loc[pool.pos.map(lambda p: "G" if p == "G" else ("D" if p == "D" else "F")) == g, "fpts_model"].median())
-                fig.add_scatter(x=adp_grid, y=c[0] + c[1] * med + c[2] * np.log(adp_grid), name=f"{g} (median projection)", line=dict(color=PALETTE[i]))
-            fig.update_layout(title="Market-adjusted expectation vs ADP, holding projection fixed", xaxis_title="ADP", yaxis_title="expected actual pts")
-            fig_show(fig, 330)
-        note(
-            "How to read this: a weight on projection below 1 means projections are shrunk; a negative weight on log ADP "
-            "means that, for the same projection, a player the market drafts later tends to score less. Goalie projections "
-            "carry the least information, so goalie values are shrunk the most."
-        )
+            st.markdown(
+                "Choosing the maximum of many noisy estimates selects estimates that are too high (the winner's curse). We regress actual "
+                "fantasy points on our projection and log(ADP) separately for forwards, defense and goalies, using past seasons, and use the "
+                "fitted value. A projection weight below 1 means shrinkage; goalies are shrunk most because their projections are least reliable."
+            )
 
-    # 4. valuation ---------------------------------------------------------------------------------------
-    st.markdown("### 4. From a roster to P(win a week)")
-    st.markdown(
-        "Each roster is slotted optimally (Hungarian assignment: starters count fully, bench players about a third "
-        "because daily lineups let them fill idle days). A team's weekly score is modelled as Normal with mean equal "
-        "to its expected weekly points and variance from Poisson-type variation in each scoring statistic. The "
-        "probability of beating an opponent is the area where your distribution exceeds theirs."
-    )
+    st.markdown("#### Step 4. Turning a team into a chance of winning")
     _, _, demo = ctx.rollout(*ctx.initial_state([]), 0, None, np.random.default_rng(3))
     mu_sd = {t: ctx.val.team_dist(demo[t].roster) for t in ctx.teams}
     ranked = sorted(ctx.teams, key=lambda t: mu_sd[t][0][0])
-    top_t, mid_t = ranked[-1], ranked[len(ranked) // 2]
-    (m1, v1), (m2, v2) = mu_sd[top_t], mu_sd[mid_t]
-    xs = np.linspace(min(m1[0], m2[0]) - 4 * np.sqrt(max(v1[0], v2[0])), max(m1[0], m2[0]) + 4 * np.sqrt(max(v1[0], v2[0])), 300)
-    fig = go.Figure()
-    fig.add_scatter(x=xs, y=norm.pdf(xs, m1[0], np.sqrt(v1[0])), name=f"Strongest simulated roster (mean {m1[0]:.0f})", line=dict(color=NAVY), fill="tozeroy", fillcolor="rgba(31,58,95,0.15)")
-    fig.add_scatter(x=xs, y=norm.pdf(xs, m2[0], np.sqrt(v2[0])), name=f"Median simulated roster (mean {m2[0]:.0f})", line=dict(color=RUST), fill="tozeroy", fillcolor="rgba(165,69,43,0.12)")
+    (m1, v1), (m2, v2) = mu_sd[ranked[-1]], mu_sd[ranked[len(ranked) // 2]]
+    sd_max = np.sqrt(max(v1[0], v2[0]))
+    xs = np.linspace(min(m1[0], m2[0]) - 4 * sd_max, max(m1[0], m2[0]) + 4 * sd_max, 300)
     p_demo = norm.cdf((m1[0] - m2[0]) / np.sqrt(v1[0] + v2[0]))
-    fig.update_layout(title=f"Weekly score distributions from one simulated draft: P(strongest beats median) = {p_demo:.2f}", xaxis_title="weekly fantasy points", yaxis_title="density")
-    fig_show(fig, 340)
-    note("How to read this: the wider the overlap, the closer the matchup is to a coin flip. A few points of weekly mean can move P(win) by several percentage points because weekly variance is large.")
+    c1, c2 = st.columns([3, 2])
+    with c1:
+        fig = go.Figure()
+        fig.add_scatter(x=xs, y=norm.pdf(xs, m1[0], np.sqrt(v1[0])), name="A strong team", line=dict(color=NAVY), fill="tozeroy", fillcolor="rgba(31,58,95,0.15)")
+        fig.add_scatter(x=xs, y=norm.pdf(xs, m2[0], np.sqrt(v2[0])), name="An average team", line=dict(color=RUST), fill="tozeroy", fillcolor="rgba(165,69,43,0.12)")
+        fig.update_layout(title="How many points each team might score in a week", xaxis_title="weekly fantasy points", yaxis_title="how likely")
+        fig_show(fig, 320)
+    with c2:
+        st.markdown(
+            "A team does not score the same number of points every week. Some weeks are lucky and some are not. "
+            "The curves show the range of weekly scores for a strong team and an average team. "
+            f"Because the curves overlap, **the strong team wins about {p_demo:.0%} of the time, not every time.** "
+            "The app judges every possible pick by how much it raises this chance."
+        )
+    with st.expander("Technical details"):
+        st.markdown(
+            "Players are slotted by the Hungarian algorithm (starters count fully, bench about one third because daily lineups let them fill idle days). "
+            "Weekly team points are modelled as Normal: the mean is expected weekly points and the variance comes from over-dispersed Poisson variation in each scoring stat, "
+            "inflated for correlation between stats. P(win) = Phi((mu_me - mu_opp) / sqrt(var_me + var_opp)), averaged over the other rosters."
+        )
 
-    # 5. opponents ---------------------------------------------------------------------------------------
-    st.markdown("### 5. Predicting what the other managers will do")
-    st.markdown(
-        "Opponent picks are modelled with a conditional logit: the chance a manager takes player j is proportional to "
-        "exp(utility), where utility rises with market rank (negative log ADP), with positional need, and with a "
-        "position-by-round tendency. It is estimated by maximum likelihood on every pick in the league's past drafts."
-    )
+    st.markdown("#### Step 5. Guessing what everyone else will pick")
     opp = b.sim_opp or b.opp_model
-    top = ctx.adp_order[:40]
-    for_round = st.select_slider("Illustrate at round", options=[1, 3, 6, 10, 15], value=1)
-    probs = softmax(opp.utilities(None, for_round, ctx.neg_log_adp[top], ctx.grp[top], np.ones(len(top))))
-    fig = go.Figure(go.Bar(x=[f"{pool.loc[j, 'name']}" for j in top], y=probs, marker_color=[RUST if ctx.grp[j] == 2 else (SAGE if ctx.grp[j] == 1 else NAVY) for j in top]))
-    fig.update_layout(title=f"Probability each of the top 40 (by ADP) is the next pick, round {for_round} (blue F, green D, rust G)", yaxis_title="pick probability", xaxis_tickangle=-60)
-    fig_show(fig, 380)
-    note(f"The fitted market sensitivity is {opp.global_[0]:.1f}: managers in this league follow ADP closely, but not perfectly. That residual randomness is why a player's chance of lasting to your next pick is a probability, not a certainty.")
+    top = ctx.adp_order[:25]
+    probs = softmax(opp.utilities(None, 1, ctx.neg_log_adp[top], ctx.grp[top], np.ones(len(top))))
+    c1, c2 = st.columns([3, 2])
+    with c1:
+        fig = go.Figure(go.Bar(x=[pool.loc[j, "name"] for j in top], y=probs, marker_color=NAVY))
+        fig.update_layout(title="Chance each player is the very first pick (top 25 by ESPN ranking)", yaxis_title="chance", xaxis_tickangle=-60)
+        fig_show(fig, 360)
+    with c2:
+        st.markdown(
+            "We studied every pick your league made in its last three drafts. **People in your league mostly follow ESPN's rankings, but not always.** "
+            "So the app can't know exactly who will be gone before your next turn, but it can give good odds. "
+            "That is where the \"available next pick\" percentage in the Draft room comes from."
+        )
+    with st.expander("Technical details"):
+        st.markdown(
+            f"Conditional logit fitted by maximum likelihood on every historical pick: utility = b_adp * (-log ADP) + b_need * positional need + position-by-round effects. "
+            f"Fitted market sensitivity b_adp = {opp.global_[0]:.1f}. Per-manager versions did not predict held-out drafts better (test H3), so the simulator uses the league-wide model."
+        )
 
-    # 6. spectral ----------------------------------------------------------------------------------------
-    st.markdown("### 6. Graph spectral analysis of manager behaviour")
+    st.markdown("#### Step 6. Playing out the draft many times")
+    st.markdown(
+        "When it is your turn, the app takes each good candidate and **pretends you picked him.** Then it plays out the rest of the draft "
+        "many times: the other managers pick the way they usually do, and you keep picking sensibly. At the end it checks how often your finished "
+        "team would win a week. **The candidate with the highest winning chance becomes the suggestion.** It works like a weather forecast: "
+        "many possible futures, summed up as one clear answer."
+    )
+    with st.expander("Technical details"):
+        st.markdown(
+            "Monte Carlo rollouts with common random numbers (every candidate sees the same simulated futures, so the comparison between them is precise). "
+            "Inside each rollout your later picks use the market-anchored policy: the highest projected value among the next two roster-fitting players by ADP. "
+            "The Draft room reports each candidate's gap to the best with its paired standard error; gaps within about two standard errors count as ties."
+        )
+
+    st.markdown("#### Step 7. Grouping the managers")
+    st.markdown(
+        "We also drew a map of the managers where **people who draft in similar ways sit close together.** It shows two main styles in your league: "
+        "managers who grab goalies early, and managers who follow the rankings and wait on goalies. The map is in the Detailed data section of the League and strategy tab."
+    )
     if b.spectral is not None:
-        c1, c2 = st.columns(2)
-        with c1:
+        with st.expander("Technical details (graph spectral analysis)"):
             ev = b.spectral.eigenvalues[: min(8, len(b.spectral.eigenvalues))]
             fig = go.Figure(go.Scatter(x=list(range(1, len(ev) + 1)), y=ev, mode="lines+markers", line=dict(color=NAVY)))
             fig.add_vline(x=b.spectral.k + 0.5, line_dash="dash", line_color=RUST)
             fig.update_layout(title=f"Laplacian eigenvalues: largest gap after k = {b.spectral.k}", xaxis_title="index", yaxis_title="eigenvalue")
-            fig_show(fig, 330)
-        with c2:
-            note(
-                "Managers are nodes; edges are weighted by how similar their drafting is (reach vs ADP, when they take goalies "
-                "and defense, loyalty to one NHL team). The normalised graph Laplacian's small eigenvalues reveal clusters; the "
-                "number of clusters is chosen where the eigenvalue sequence jumps (the eigengap). The map of managers is on the "
-                "<b>League and strategy</b> tab. Tested in H4: pooling managers by cluster did <b>not</b> improve pick prediction "
-                "over simpler models, so it is used descriptively rather than in the simulator."
+            fig_show(fig, 300)
+            st.markdown(
+                "Managers are nodes of a similarity graph (Gaussian kernel on standardised draft-behaviour features). The normalised Laplacian's smallest "
+                "eigenvectors reveal clusters; k is chosen at the largest eigengap and k-means runs on the row-normalised eigenvectors. Pooling by cluster "
+                "did not improve pick prediction (test H4), so the groups are descriptive."
             )
 
-    # 7. simulation --------------------------------------------------------------------------------------
-    st.markdown("### 7. The recommendation: Monte Carlo rollouts")
-    note(
-        "For each candidate you could draft now, the rest of the draft is simulated many times: opponents pick from the "
-        "logit model and your later picks follow the market-anchored policy (best projected value among the next two "
-        "players by ADP). Each finished league is scored with P(win a week). All candidates share the same random draws "
-        "(common random numbers), so their difference is measured precisely even with few simulations. The Draft room "
-        "reports the gap to the best candidate with its standard error; a gap smaller than about two standard errors is "
-        "a statistical tie, and then you should take the player less likely to be available at your next pick."
+    # --- scorecard ---------------------------------------------------------------------------------
+    st.markdown("---")
+    st.markdown("### Did we check that it actually works?")
+    st.markdown(
+        "Yes. Each idea was written down as a question **before** testing it, then checked on past seasons the models had never seen. "
+        "The whole set of tests was run twice with different random numbers to make sure the answers hold up."
     )
-
-    # 8. evidence ----------------------------------------------------------------------------------------
-    st.markdown("### 8. Does it work? Pre-registered hypothesis tests")
-    if run is None:
-        st.info("No experiment results found. Run: python -m iknowpuck.experiments")
+    runs2 = load_runs(2)
+    if not runs2:
+        st.info("No test results yet. Run: python -m iknowpuck.experiments")
     else:
-        res = pd.DataFrame([{**r["test"], "id": r["id"], "label": f"{r['id']}: {r['treatment']} vs {r['baseline']}", "hyp": r["hypothesis"]} for r in run["results"]])
-        res["sd"] = res["mean_diff"] / res["cohens_dz"].replace(0, np.nan)
-        res["dz_lo"], res["dz_hi"] = res["ci_low"] / res["sd"], res["ci_high"] / res["sd"]
-        fig = go.Figure()
-        for _, r in res.iterrows():
-            col = SAGE if r["significant"] else (RUST if r["mean_diff"] < 0 else GREY)
-            fig.add_scatter(x=[r["dz_lo"], r["dz_hi"]], y=[r["label"]] * 2, mode="lines", line=dict(color=col, width=3), showlegend=False)
-            fig.add_scatter(x=[r["cohens_dz"]], y=[r["label"]], mode="markers", marker=dict(color=col, size=11), showlegend=False)
-        fig.add_vline(x=0, line_color="#444")
-        fig.update_layout(title="Effect sizes (Cohen's d_z) with 95% bootstrap intervals; right of zero favours the treatment", xaxis_title="standardised paired effect", yaxis_title="")
-        fig_show(fig, 60 + 70 * len(res))
-        for _, r in res.iterrows():
-            verdict = "supported" if r["significant"] else ("contradicted: the treatment was worse" if r["ci_high"] < 0 else "not supported")
-            st.markdown(f"- **{r['id']}** ({r['hyp']}): {verdict}. Mean paired difference {r['mean_diff']:+.3f}, 95% CI [{r['ci_low']:+.3f}, {r['ci_high']:+.3f}], n = {r['n']}, Holm-adjusted p = {r['p_adjusted']:.3f}.")
-        note("Green: significant after Holm correction for testing several hypotheses at once. Rust: the interval lies entirely below zero, so the idea was rejected and removed from the draft engine. Grey: inconclusive.")
-
-    # 9. aims --------------------------------------------------------------------------------------------
-    st.markdown("### 9. What to aim for on draft day")
-    cor = b.strategy_cor
-    if len(cor):
-        wp = cor[cor.outcome == "Win %"].sort_values("rho")
-        fig = go.Figure()
-        for _, r in wp.iterrows():
-            col = SAGE if r.ci_low > 0 else (RUST if r.ci_high < 0 else GREY)
-            fig.add_scatter(x=[r.ci_low, r.ci_high], y=[r.strategy] * 2, mode="lines", line=dict(color=col, width=3), showlegend=False)
-            fig.add_scatter(x=[r.rho], y=[r.strategy], mode="markers", marker=dict(color=col, size=10), showlegend=False)
-        fig.add_vline(x=0, line_color="#444")
-        fig.update_layout(title="Association of draft behaviour with regular-season win % (Spearman, 95% bootstrap CI)", xaxis_title="rank correlation", yaxis_title="")
-        fig_show(fig, 420)
-        note(
-            "Evidence from this league's past three seasons (36 manager-seasons). Descriptive, not causal, and "
-            "several comparisons are being made, so treat borderline results as hints.<br>"
-            "<b>1. The draft matters.</b> The actual points of the players you draft correlate strongly with finishing "
-            "position.<br>"
-            "<b>2. Win on value, not on reaches.</b> Reaching ahead of ADP shows no association with results, and the "
-            "backtest shows that chasing projection-vs-ADP gaps loses. Stay inside the market window.<br>"
-            "<b>3. Forwards first.</b> A heavy defense share in rounds 1 to 6 is associated with lower win %.<br>"
-            "<b>4. Goalies.</b> Managers who waited longest on goalies scored fewer points, but goalie projections are the "
-            "least reliable. Secure a starting goalie by the middle rounds instead of in round 1."
-        )
+        rows = []
+        for r in runs2[0]["results"]:
+            vs = [verdict(next(x["test"] for x in run_["results"] if x["id"] == r["id"])) for run_ in runs2 if any(x["id"] == r["id"] for x in run_["results"])]
+            v = vs[0]
+            rows.append({
+                "Question": PLAIN_QUESTIONS.get(r["id"], r["hypothesis"]),
+                "Answer": plain_answer(v),
+                "Same answer in every run": f"{sum(x == v for x in vs)} of {len(vs)}",
+                "What it means for you": PLAIN_MEANING.get((r["id"], v), ""),
+            })
+        st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+        note("<b>Bottom line:</b> our player guesses are clearly better than ESPN's. When it comes to drafting, the app does about as well as following the rankings, and on top of that it checks roster fit and tells you who is likely to still be there. Ideas that failed the tests were removed.")
+        with st.expander("Technical details (effect sizes and p-values)"):
+            res = pd.DataFrame([{**x["test"], "id": x["id"], "label": f"{x['id']}: {x['treatment']} vs {x['baseline']}"} for x in runs2[0]["results"]])
+            res["sd"] = res["mean_diff"] / res["cohens_dz"].replace(0, np.nan)
+            res["dz_lo"], res["dz_hi"] = res["ci_low"] / res["sd"], res["ci_high"] / res["sd"]
+            fig = go.Figure()
+            for _, r in res.iterrows():
+                col = SAGE if r["significant"] else (RUST if r["ci_high"] < 0 else GREY)
+                fig.add_scatter(x=[r["dz_lo"], r["dz_hi"]], y=[r["label"]] * 2, mode="lines", line=dict(color=col, width=3), showlegend=False)
+                fig.add_scatter(x=[r["cohens_dz"]], y=[r["label"]], mode="markers", marker=dict(color=col, size=11), showlegend=False)
+            fig.add_vline(x=0, line_color="#444")
+            fig.update_layout(title="Cohen's d_z with 95% bootstrap intervals (right of zero favours the new idea)", xaxis_title="standardised paired effect")
+            fig_show(fig, 60 + 70 * len(res))
+            for x in runs2[0]["results"]:
+                t = x["test"]
+                st.markdown(f"- **{x['id']}**: mean paired difference {t['mean_diff']:+.3f}, 95% CI [{t['ci_low']:+.3f}, {t['ci_high']:+.3f}], n = {t['n']}, Holm-adjusted p = {t['p_adjusted']:.3f}.")
 
 
 # ======================================================================================================
@@ -364,6 +410,11 @@ def draft_room():
             st.session_state.rec = (n_done, rec)
         if "rec" in st.session_state and st.session_state.rec[0] == n_done:
             rec = st.session_state.rec[1].head(12)
+            tied = rec[rec.gap_to_best >= -2 * rec.gap_se.fillna(0)]
+            pick_row = tied.sort_values(["p_avail_next_pick", "win_prob"], ascending=[True, False]).iloc[0]
+            why = ("It gives the best chance of winning weeks." if len(tied) == 1 else
+                   f"{len(tied)} players are tied for best; this one is the least likely to still be there at your next pick ({pick_row.p_avail_next_pick:.0%}).")
+            st.success(f"Suggested pick: {pick_row['name']} ({pick_row.pos}). {why}")
             fig = go.Figure(go.Bar(
                 x=rec.win_prob, y=rec.name + " (" + rec.pos + ")", orientation="h",
                 error_x=dict(type="data", array=1.96 * rec.gap_se.fillna(0), color="#444"),
@@ -376,7 +427,7 @@ def draft_room():
                 "proj_value": "proj pts", "market_rank": "market rank", "win_prob": "P(win week)", "gap_to_best": "gap to best",
                 "gap_se": "gap SE", "p_best": "P(best)", "p_avail_next_pick": "available next pick"})
             st.dataframe(show.style.format({"proj pts": "{:.0f}", "adp": "{:.1f}", "P(win week)": "{:.3f}", "gap to best": "{:+.3f}", "gap SE": "{:.3f}", "P(best)": "{:.0%}", "available next pick": "{:.0%}"}), hide_index=True, use_container_width=True)
-            note("Dark bar: best estimate. Mid-blue: statistically tied with the best (gap within two standard errors); among tied players prefer the one least likely to be available at your next pick. Market rank 1 is the next player the market expects to go.")
+            note("How to read this: a longer bar means a better chance of winning weeks. The dark bar is the top estimate; mid-blue bars are tied with it. Among tied players, take the one least likely to be available at your next pick (last column).")
         st.markdown("#### Record a pick")
         taken_ids = {p for _, p in st.session_state.picks}
         avail = pool[~pool.player_id.isin(taken_ids)].sort_values("fpts", ascending=False)
@@ -480,53 +531,123 @@ with tab_players:
 # LEAGUE AND STRATEGY
 # ======================================================================================================
 with tab_league:
-    st.markdown("## League managers and strategy")
     mgr_names = b.manager_names
     active = set(b.managers.loc[b.managers.active, "owner_id"].astype(str)) if len(b.managers) else set()
+    my_owner = b.manager_of_team.get(my_team)
 
     def who(m):
-        n = mgr_names.get(m, m)
-        return n if m in active else f"{n} (former)"
+        n_ = mgr_names.get(m, m)
+        return n_ if m in active else f"{n_} (former)"
 
-    if len(b.managers):
-        md = b.managers.copy()
-        md["team slot by season"] = md["team_by_season"].map(lambda d: ", ".join(f"{s}: #{t}" for s, t in sorted(d.items())))
-        md["picks modelled"] = md["owner_id"].map(b.drafts.groupby("owner_id").size()).fillna(0).astype(int)
-        md["status"] = np.where(md.active, "active", "left league")
-        st.dataframe(md[["manager", "status", "team slot by season", "picks modelled"]].sort_values(["status", "manager"]), hide_index=True, use_container_width=True)
-        st.markdown("<span class='caption'>Managers are tracked by ESPN account, not team slot, so history follows the person when slots change hands.</span>", unsafe_allow_html=True)
+    st.markdown("## Your league: who wins, and how")
+    tk = league_takeaways(b.strategy)
+    if tk:
+        st.markdown("### The big picture")
+        st.markdown("We looked at every team from the last three seasons and compared the **top four finishers** with **everyone else**.")
+        comp = pd.DataFrame({
+            "": ["Weekly win rate", "Draft points above expected, per season", "Round of first goalie", "Share of defensemen in rounds 1 to 6"],
+            "Top four finishers": [f"{tk['top_win']:.0%}", f"{tk['top_value']:+.0f}", f"{tk['top_goalie_round']:.1f}", f"{tk['top_d_share']:.0%}"],
+            "Everyone else": [f"{tk['rest_win']:.0%}", f"{tk['rest_value']:+.0f}", f"{tk['rest_goalie_round']:.1f}", f"{tk['rest_d_share']:.0%}"],
+        })
+        st.dataframe(comp, hide_index=True, use_container_width=True)
+        st.markdown(
+            f"- **The top teams drafted better.** Their picks scored about {tk['top_value'] - tk['rest_value']:.0f} more points per season than the other teams' picks, compared with what those draft spots normally produce.\n"
+            f"- **The top teams took their first goalie a little earlier:** around round {tk['top_goalie_round']:.0f}, compared with round {tk['rest_goalie_round']:.0f}.\n"
+            "- **Reaching did not help anyone.** Winners and losers took players ahead of their ranking about equally often.\n"
+            "- **Loading up on defensemen in rounds 1 to 6 went with fewer wins** across the league."
+        )
+        note("These patterns come from 36 team-seasons. Treat them as strong hints, not guarantees.")
 
-    if len(b.strategy):
-        st.markdown("### Results and draft behaviour by season")
-        ms = b.strategy.copy()
-        ms["manager"] = ms["owner_id"].map(who)
-        fig = go.Figure()
-        fig.add_scatter(x=ms.value_added_all, y=ms.win_pct, mode="markers", text=ms.manager + " " + ms.season.astype(str), marker=dict(size=9, color=[RUST if o == S.my_team_id or mgr_names.get(o) == names.get(my_team) else NAVY for o in ms.owner_id]), hovertemplate="%{text}<br>value added %{x:.0f}<br>win %% %{y:.2f}")
-        fig.update_layout(title="Draft value added vs regular-season win % (each point is a manager-season)", xaxis_title="actual points of drafted players above what their pick slots usually yield", yaxis_title="win %")
-        fig_show(fig, 400)
-        st.dataframe(ms[["season", "manager", "final_rank", "win_pct", "points_for", "first_goalie_round", "goalies_r1_3", "d_share_r1_6", "reach_early", "value_added_all"]].sort_values(["season", "final_rank"]).round(2), hide_index=True, use_container_width=True)
-        prof = ms.groupby("manager")[["win_pct", "value_added_all", "first_goalie_round", "d_share_r1_6", "reach_early"]].mean().sort_values("win_pct", ascending=False)
-        st.markdown("### Manager profiles (averaged over seasons)")
-        st.dataframe(prof.round(2), use_container_width=True)
-        st.markdown("### Strategy associations, all outcomes")
-        st.dataframe(b.strategy_cor.round(3), hide_index=True, use_container_width=True)
+    reports = manager_reports(b.strategy, mgr_names, active)
+    mine_r = next((r for r in reports if r.owner_id == str(my_owner)), None)
+    if mine_r:
+        st.markdown(f"### Your review: {mine_r.name}")
+        st.markdown(f"**Finishes:** {mine_r.finishes}. **Average win rate:** {mine_r.win_pct:.0%}.")
+        for x in mine_r.bullets:
+            st.markdown(f"- {x}")
+        mine_rows = b.strategy[b.strategy.owner_id == my_owner].sort_values("season")
+        st.dataframe(pd.DataFrame({
+            "Season": mine_rows.season.astype(str), "Finish": mine_rows.final_rank.map(ordinal),
+            "Weekly win rate": mine_rows.win_pct.map(lambda x: f"{x:.0%}"),
+            "Draft points above expected": mine_rows.value_added_all.map(lambda x: f"{x:+.0f}"),
+            "First goalie round": mine_rows.first_goalie_round.astype(int),
+        }), hide_index=True, use_container_width=True)
+        league_median_value = b.strategy.groupby("owner_id").value_added_all.mean().median()
+        if mine_rows.value_added_all.mean() >= league_median_value and mine_r.avg_finish > 6.5:
+            note("<b>The key insight:</b> your drafts have been better than most of the league's, but your finishes have been lower than your drafts suggest. "
+                 "That points to what happens after the draft (weekly lineups, pickups, injuries and luck), not the draft itself. "
+                 "The draft tool keeps your edge; staying active on the waiver wire and setting daily lineups is where the extra wins are.")
+        advice = []
+        if tk and mine_rows.first_goalie_round.mean() > tk["top_goalie_round"] + 0.5:
+            advice.append(f"You took your first goalie later (round {mine_rows.first_goalie_round.mean():.0f} on average) than the top teams (round {tk['top_goalie_round']:.0f}). Aim a little earlier.")
+        if tk and mine_rows.d_share_r1_6.mean() > tk["top_d_share"] + 0.03:
+            advice.append("You took more defensemen early than the top teams did. Lean toward forwards in rounds 1 to 6.")
+        if tk and mine_rows.value_added_all.mean() < tk["top_value"]:
+            advice.append("Your picks have not beaten their draft spots by as much as the top teams' picks have. That is exactly the gap this app is built to close: better guesses and no reaching.")
+        if advice:
+            st.markdown("**What to change this year:**")
+            for a in advice:
+                st.markdown(f"- {a}")
 
-    if b.spectral is not None:
-        st.markdown("### Manager archetypes (spectral clustering)")
-        tbl = b.spectral.table().reset_index()
-        tbl["who"] = tbl["manager"].map(who)
-        fig = go.Figure()
-        for i, cl in enumerate(sorted(tbl.cluster.unique())):
-            d = tbl[tbl.cluster == cl]
-            fig.add_scatter(x=d.x, y=d.y, mode="markers+text", text=d.who, textposition="top center", name=f"cluster {cl}", marker=dict(size=11, color=PALETTE[i]))
-        fig.update_layout(title="Spectral embedding of managers", xaxis_title="Laplacian eigenvector 2 (Fiedler)", yaxis_title="eigenvector 3")
-        fig_show(fig, 480)
-        st.dataframe(tbl[["who", "cluster", "mean_reach", "reach_early", "d_share_early", "g_share_early", "first_goalie_round", "homer_index", "fiedler"]].round(2), hide_index=True, use_container_width=True)
-        st.markdown("### Fitted pick tendencies (conditional logit, per manager)")
-        desc = b.opp_model.describe()
-        desc["who"] = desc["manager"].map(lambda m: who(m) if m != "(league)" else "League average")
-        st.dataframe(desc.drop(columns="manager").set_index("who").round(2), use_container_width=True)
-        st.markdown("<span class='caption'>adp_sensitivity: how strictly a manager follows ADP. Position biases are relative to forwards in each round phase; positive values mean the manager takes that position earlier than the league. These per-manager fits are descriptive; the simulator uses the league-wide model (see H3).</span>", unsafe_allow_html=True)
+    st.markdown("### Scouting reports")
+    st.markdown("One card for each manager in this year's league, best average finish first.")
+    act = [r for r in reports if r.active and r.owner_id != str(my_owner)]
+    cols = st.columns(2)
+    for i, r in enumerate(act):
+        with cols[i % 2]:
+            with st.container(border=True):
+                st.markdown(f"**{r.name}**: {r.headline.lower()}")
+                st.markdown(f"<span class='caption'>Finishes: {r.finishes} &middot; win rate {r.win_pct:.0%}</span>", unsafe_allow_html=True)
+                for x in r.bullets:
+                    st.markdown(f"- {x}")
+                st.markdown(f"*{r.sunday_tip}*")
+    former = [r for r in reports if not r.active]
+    if former:
+        with st.expander("Former managers (their drafts still help the app learn the league's habits)"):
+            for r in former:
+                st.markdown(f"**{r.name}**: finishes {r.finishes}. " + " ".join(r.bullets))
+
+    with st.expander("Detailed data and charts"):
+        if len(b.managers):
+            md = b.managers.copy()
+            md["team slot by season"] = md["team_by_season"].map(lambda d: ", ".join(f"{s}: #{t}" for s, t in sorted(d.items())))
+            md["picks modelled"] = md["owner_id"].map(b.drafts.groupby("owner_id").size()).fillna(0).astype(int)
+            md["status"] = np.where(md.active, "active", "left league")
+            st.dataframe(md[["manager", "status", "team slot by season", "picks modelled"]].sort_values(["status", "manager"]), hide_index=True, use_container_width=True)
+            st.markdown("<span class='caption'>Managers are tracked by ESPN account, not team slot, so history follows the person when slots change hands.</span>", unsafe_allow_html=True)
+        if len(b.strategy):
+            ms = b.strategy.copy()
+            ms["manager"] = ms["owner_id"].map(who)
+            fig = go.Figure()
+            fig.add_scatter(x=ms.value_added_all, y=ms.win_pct, mode="markers", text=ms.manager + " " + ms.season.astype(str),
+                            marker=dict(size=9, color=[RUST if o == my_owner else NAVY for o in ms.owner_id]), hovertemplate="%{text}<br>draft points above expected %{x:.0f}<br>win rate %{y:.2f}")
+            fig.update_layout(title="Better drafts, more wins (each dot is one team in one season; yours are rust)", xaxis_title="draft points above what those draft spots usually produce", yaxis_title="win rate")
+            fig_show(fig, 400)
+            cor = b.strategy_cor
+            wp = cor[cor.outcome == "Win %"].sort_values("rho")
+            fig = go.Figure()
+            for _, r in wp.iterrows():
+                col = SAGE if r.ci_low > 0 else (RUST if r.ci_high < 0 else GREY)
+                fig.add_scatter(x=[r.ci_low, r.ci_high], y=[r.strategy] * 2, mode="lines", line=dict(color=col, width=3), showlegend=False)
+                fig.add_scatter(x=[r.rho], y=[r.strategy], mode="markers", marker=dict(color=col, size=10), showlegend=False)
+            fig.add_vline(x=0, line_color="#444")
+            fig.update_layout(title="Draft habits vs win rate (Spearman correlation, 95% bootstrap interval)", xaxis_title="rank correlation")
+            fig_show(fig, 400)
+            st.dataframe(ms[["season", "manager", "final_rank", "win_pct", "points_for", "first_goalie_round", "goalies_r1_3", "d_share_r1_6", "reach_early", "value_added_all"]].sort_values(["season", "final_rank"]).round(2), hide_index=True, use_container_width=True)
+            st.dataframe(cor.round(3), hide_index=True, use_container_width=True)
+        if b.spectral is not None:
+            tbl = b.spectral.table().reset_index()
+            tbl["who"] = tbl["manager"].map(who)
+            fig = go.Figure()
+            for i, cl in enumerate(sorted(tbl.cluster.unique())):
+                d = tbl[tbl.cluster == cl]
+                fig.add_scatter(x=d.x, y=d.y, mode="markers+text", text=d.who, textposition="top center", name=f"group {cl + 1}", marker=dict(size=11, color=PALETTE[i]))
+            fig.update_layout(title="Map of managers: similar drafters sit close together", xaxis_title="Laplacian eigenvector 2 (Fiedler)", yaxis_title="eigenvector 3")
+            fig_show(fig, 480)
+            desc = b.opp_model.describe()
+            desc["who"] = desc["manager"].map(lambda m: who(m) if m != "(league)" else "League average")
+            st.dataframe(desc.drop(columns="manager").set_index("who").round(2), use_container_width=True)
+            st.markdown("<span class='caption'>adp_sensitivity: how strictly a manager follows ADP. Position biases are relative to forwards in each round phase; positive means that position is taken earlier than the league does.</span>", unsafe_allow_html=True)
 
 
 # ======================================================================================================
@@ -555,33 +676,28 @@ with tab_research:
 # ======================================================================================================
 with tab_gloss:
     st.markdown("## Glossary")
+    st.markdown("Plain meanings first. The technical term is in brackets for anyone who wants to look it up.")
     terms = [
-        ("ADP", "Average draft position across ESPN leagues. The market's consensus of when a player is drafted."),
-        ("Market rank", "A player's position among still-available players when sorted by ADP; 1 is the next player the market expects to go."),
-        ("H2H points", "Head-to-head points scoring: each week you face one opponent and the higher fantasy-point total wins."),
-        ("P(win a week)", "Probability that a roster beats an opponent in a weekly matchup, averaged over the league's other rosters. The objective the tool maximises."),
-        ("Marcel+", "Our projection model: recency-weighted (5/4/3) per-game rates shrunk toward the position mean, with a MoneyPuck-based correction and a games-played model."),
-        ("Blend", "A per-statistic weighted average of our projection and ESPN's, with weights fit on seasons not used for training."),
-        ("Market adjustment", "A regression of actual points on our projection and log(ADP), fit on past seasons; protects against the winner's curse."),
-        ("Winner's curse", "When choosing the option with the highest noisy estimate, that estimate is biased upward; the largest projection-vs-market gaps are disproportionately errors."),
-        ("VONA", "Value over next available: a player's value minus the best same-position value expected to remain at your next pick."),
-        ("Market-anchored policy", "Choose the highest projected value among the next two roster-fitting players by ADP. Used for your future picks inside simulations."),
-        ("Usage / slotting", "Players are assigned to lineup slots optimally (Hungarian algorithm). Starters count fully, bench players partially."),
-        ("Conditional logit", "A discrete-choice model: the probability of choosing an option is proportional to exp(utility). Used to model opponent picks."),
-        ("Monte Carlo rollout", "Simulating the remainder of the draft many times to estimate the expected outcome of a decision."),
-        ("Common random numbers", "Using the same random draws for every candidate so that differences between candidates are not swamped by simulation noise."),
-        ("Standard error (SE)", "The uncertainty of an average estimated from simulations or samples. A gap smaller than about 2 SE is not statistically distinguishable from zero."),
-        ("Graph Laplacian", "L = I - D^(-1/2) W D^(-1/2) for a similarity graph with weights W; its smallest eigenvectors reveal cluster structure."),
-        ("Eigengap", "The largest jump in the sorted Laplacian eigenvalues; used to choose the number of clusters."),
-        ("Fiedler vector", "The eigenvector of the second-smallest Laplacian eigenvalue; orders nodes along the graph's main division."),
-        ("Spearman correlation (rho)", "Correlation of ranks; robust to outliers and non-linear but monotone relationships."),
-        ("Paired test", "Both arms are measured on the same units (same players, same simulated drafts), removing between-unit variation."),
-        ("Permutation test", "Randomly flips the sign of paired differences to build the null distribution; makes no normality assumption."),
-        ("Bootstrap CI", "Resamples units with replacement many times; the middle 95% of the resampled statistic forms the confidence interval."),
-        ("Cohen's d_z", "Mean paired difference divided by the standard deviation of differences; a unit-free effect size (0.2 small, 0.5 medium, 0.8 large)."),
-        ("Holm correction", "Adjusts p-values when testing several hypotheses so that the chance of any false positive stays at 5%."),
-        ("Leave-one-season-out", "Fit on all seasons but one and evaluate on the held-out season, repeated for each season."),
-        ("Out-of-sample", "Evaluated on data the model did not see when it was fit; the only honest measure of predictive accuracy."),
+        ("ESPN ranking / ADP", "Where a player usually gets picked in ESPN drafts. ADP stands for average draft position. It is the crowd's opinion of each player."),
+        ("Market rank", "Among players still available, who the crowd expects to go next. Rank 1 is the player most people would take next."),
+        ("Projection", "Our best guess of how many fantasy points a player will score this season."),
+        ("P(win a week)", "The chance your team beats an opponent in a weekly matchup. The app tries to make this as high as possible."),
+        ("Available next pick", "The chance a player will still be there when it is your turn again."),
+        ("Tie", "Two picks are tied when the difference between them is smaller than the app's measurement error. Either one is fine."),
+        ("Reaching", "Taking a player much earlier than the crowd would. It has not paid off in your league."),
+        ("Draft points above expected", "How many more (or fewer) points a manager's picks scored than players taken at the same draft spots usually score."),
+        ("Simulation", "Playing out the rest of the draft on the computer many times to see what usually happens. [Monte Carlo rollout]"),
+        ("Same simulated futures", "Every candidate is tested against the same set of simulated futures, so the comparison is fair. [common random numbers]"),
+        ("Winner's curse", "If you always pick the player our model likes most compared with the crowd, you tend to pick the players our model got wrong."),
+        ("Mixing with the ranking", "Blending our projection with the crowd's ranking to avoid the winner's curse. [market adjustment: regression on projection and log ADP]"),
+        ("Pick model", "A formula that gives each available player a chance of being picked next, based on ranking and team needs. [conditional logit]"),
+        ("Manager map", "A picture where managers who draft alike sit close together. [graph spectral clustering: Laplacian eigenvectors, eigengap]"),
+        ("Tested on unseen seasons", "Checking a model only on seasons it was not built from. This is the only fair test. [out-of-sample, leave-one-season-out]"),
+        ("Confidence interval", "The range the true answer most likely falls in. If the whole range is above zero, the idea clearly helps. [95% bootstrap CI]"),
+        ("Statistically significant", "Very unlikely to be luck, even after allowing for running several tests at once. [permutation test with Holm correction]"),
+        ("Effect size", "How big a difference is on a common scale: 0.2 is small, 0.5 medium, 0.8 large. [Cohen's d_z]"),
+        ("Correlation", "How strongly two things move together, from -1 to +1. [Spearman rank correlation]"),
+        ("VONA", "Value over next available: how much better a player is than the best similar player likely to be left at your next pick."),
     ]
     for t, d in terms:
         st.markdown(f"**{t}.** {d}")

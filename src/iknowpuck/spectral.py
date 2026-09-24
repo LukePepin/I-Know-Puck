@@ -25,7 +25,7 @@ from .opponents import group_of
 def manager_features(drafts: pd.DataFrame, players: pd.DataFrame) -> pd.DataFrame:
     """One row per manager (pooled across seasons). drafts: season, overall, round, owner_id, player_id."""
     pl = players[["season", "player_id", "adp", "pos", "pro_team_id"]].drop_duplicates(["season", "player_id"])
-    d = drafts.merge(pl, on=["season", "player_id"], how="left")
+    d = drafts.drop(columns=["pos", "adp"], errors="ignore").merge(pl, on=["season", "player_id"], how="left")
     d["adp"] = d["adp"].fillna(d["overall"].max() + 30)
     d["reach"] = np.log(d["adp"]) - np.log(d["overall"])  # >0: took the player earlier than ADP
     d["grp"] = d["pos"].map(group_of)
