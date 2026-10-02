@@ -103,13 +103,23 @@ def esc(x) -> str:
 
 
 @st.cache_data
-def csv(name: str) -> pd.DataFrame:
+def _read_csv(name: str, mtime: float) -> pd.DataFrame:
     return pd.read_csv(DATA / name)
 
 
 @st.cache_data
-def js(name: str):
+def _read_json(name: str, mtime: float):
     return json.loads((DATA / name).read_text(encoding="utf-8"))
+
+
+# keyed on the file's modified time: the host reloads code on a push without restarting, so a name-only cache
+# would keep serving the previous snapshot
+def csv(name: str) -> pd.DataFrame:
+    return _read_csv(name, (DATA / name).stat().st_mtime)
+
+
+def js(name: str):
+    return _read_json(name, (DATA / name).stat().st_mtime)
 
 
 def snapshot_date() -> str:
