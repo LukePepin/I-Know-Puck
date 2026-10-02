@@ -39,8 +39,8 @@ pio.templates.default = "showcase"
 
 CSS = f"""
 <style>
-[data-testid="stMainBlockContainer"] {{ padding-top: 1.4rem; padding-bottom: 5rem; max-width: 1180px; }}
-@media (max-width: 640px) {{ [data-testid="stMainBlockContainer"] {{ padding: .6rem 1rem 4rem; }} }}
+[data-testid="stMainBlockContainer"] {{ padding-top: 4.4rem; padding-bottom: 5rem; max-width: 1180px; }}  /* clears the 60px app header */
+@media (max-width: 640px) {{ [data-testid="stMainBlockContainer"] {{ padding: 4.1rem 1rem 4rem; }} }}
 h3 {{ border-top: 2px solid {INK}; padding-top: .55rem !important; margin-top: 1.8rem !important; }}
 .kp-mast {{ border-bottom: 4px double {INK}; padding-bottom: .5rem; }}
 .kp-name {{ font-size: 2.7rem; font-weight: 800; line-height: 1; letter-spacing: .03em; text-transform: uppercase; }}
