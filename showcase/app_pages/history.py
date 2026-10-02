@@ -11,6 +11,7 @@ meta = js("meta.json")
 stand = csv("history_standings.csv")
 habits = csv("habits.csv")
 styles = csv("styles.csv")
+links = csv("style_links.csv")
 hist = csv("history_picks.csv")
 theory = js("theory.json")
 seasons = sorted(hist.season.unique())
@@ -50,31 +51,50 @@ note("**What stands out:** drafting well matters most. Managers whose drafted pl
      "Taking many defensemen in the first six rounds went with losing. Most other habits, including stacking one NHL team and trading, show no clear link. "
      f"These come from {len(stand)} manager-seasons, so they are clues rather than proof.")
 
-# --- styles ------------------------------------------------------------------------------------------
-st.markdown("### Drafting styles")
+# --- styles: graph spectral analysis ---------------------------------------------------------------------
+st.markdown("### Drafting styles: the managers' similarity graph")
+sp = meta.get("spectral") or {}
 c1, c2 = st.columns([3, 2])
 groups = sorted(styles.group.unique())
 gcol = {g: CAT[i % len(CAT)] for i, g in enumerate(groups)}
+with c2:
+    st.markdown(f"**Graph spectral analysis** in three steps:\n"
+                f"1. Describe each manager by {sp.get('n_features', 10)} draft habits, such as how far they reach ahead of the rankings, "
+                "when they take a goalie, and how loyal they are to one NHL team.\n"
+                "2. Link every pair of managers. The link is strong (near 1) when their habits are alike and weak (near 0) when they differ.\n"
+                "3. The graph's **eigenvectors** place the managers on the map, and the **eigengap** says how many groups the graph splits into "
+                f"(here {sp.get('k', len(groups))}).")
+    thr = st.slider("Show links stronger than", 0.3, 0.9, 0.7, 0.05, key="h_thr",
+                    help="Raise it and only the most alike pairs stay linked; the graph breaks apart where the links are weakest.")
+    for g in meta.get("groups", []):
+        st.markdown(f"<span style='color:{gcol.get(g['name'], INK)}'>●</span> **{g['name']}**: {', '.join(g['traits'])}", unsafe_allow_html=True)
 with c1:
-    tpos = label_positions(styles.x, styles.y, styles.manager.tolist())
+    pos = styles.set_index("manager")[["x", "y"]]
+    near = {m: ", ".join(f"{r.other} ({r.w:.2f})" for r in grp.nlargest(3, "w").itertuples())
+            for m, grp in pd.concat([links.rename(columns={"a": "m", "b": "other"}), links.rename(columns={"b": "m", "a": "other"})]).groupby("m")}
+    shown = links[links.w >= thr]
     fig = go.Figure()
+    for r in shown.itertuples():
+        s = (r.w - thr) / max(1 - thr, 1e-9)
+        fig.add_scatter(x=[pos.x[r.a], pos.x[r.b]], y=[pos.y[r.a], pos.y[r.b]], mode="lines", hoverinfo="skip", showlegend=False,
+                        line=dict(width=0.8 + 5 * s, color=rgba(MUTED, 0.25 + 0.5 * s)))
+    tpos = label_positions(styles.x, styles.y, styles.manager.tolist(), width_px=400, height_px=380)
     for g in groups:
         idx = np.flatnonzero(styles.group.to_numpy() == g)
         x = styles.iloc[idx]
         fig.add_scatter(x=x.x, y=x.y, mode="markers+text", name=g, text=x.manager, textposition=[tpos[i] for i in idx], textfont=dict(color=INK, size=12),
-                        marker=dict(size=16, color=gcol[g], line=dict(color="white", width=2)), hovertemplate="%{text}<extra>" + g + "</extra>")
+                        marker=dict(size=18, color=gcol[g], line=dict(color="white", width=2)), customdata=[near.get(m, "") for m in x.manager],
+                        hovertemplate="<b>%{text}</b> (" + g + ")<br>drafts most like: %{customdata}<extra></extra>")
     pad_x, pad_y = 0.15 * np.ptp(styles.x), 0.12 * np.ptp(styles.y)
-    fig.update_layout(title="Managers placed so that similar drafters sit close together", legend=dict(orientation="h", y=-0.05),
+    fig.update_layout(title=f"Each dot is a manager; a line joins two managers who draft alike (thicker = more alike). {len(shown)} of {len(links)} possible links shown",
+                      legend=dict(orientation="h", y=-0.05),
                       xaxis=dict(visible=False, range=[styles.x.min() - pad_x, styles.x.max() + pad_x]),
                       yaxis=dict(visible=False, range=[styles.y.min() - pad_y, styles.y.max() + pad_y]))
-    fig_show(fig, 440)
-with c2:
-    st.markdown("Each manager is described by ten draft habits, such as how far they reach ahead of the rankings, when they take a goalie, and how "
-                "loyal they are to one NHL team. A **similarity graph** links managers with similar habits; the graph's eigenvectors place them on the map, "
-                "and clustering the map finds the groups (**graph spectral clustering**).")
-    for g in meta.get("groups", []):
-        st.markdown(f"- **{g['name']}**: {', '.join(g['traits'])}")
-    st.caption("Honest caveat: a permutation test could not rule out that these groups are chance (p about 0.1). Treat them as tendencies, not types.")
+    fig_show(fig, 460)
+p_sp = sp.get("p", 0.1)
+note(f"**How sure are we?** A permutation test shuffled the habits 1,000 times to see how often random managers split into groups this cleanly: "
+     f"about {p_sp:.0%} of the time (p = {p_sp:.2f}). So the groups are **tendencies, not proven types**. The links themselves are real measurements: "
+     "hover a dot to see who drafts most like that manager.")
 
 # --- past picks --------------------------------------------------------------------------------------
 st.markdown("### Every past pick")
@@ -126,15 +146,20 @@ with c2:
 # --- systems overview ----------------------------------------------------------------------------------
 how_built(
     [("ESPN league data", "drafts, weekly results"), ("ESPN game logs", "every player, every game"), ("Match & clean", "managers by ESPN account"),
-     ("Measure", "draft value, habits"), ("Test", "correlations, permutations"), ("Charts", "this page")],
+     ("Measure", "draft value, habits"), ("Similarity graph", "links, eigenvectors"), ("Test", "correlations, permutations"), ("Charts", "this page")],
     ["**Collect.** The league's drafts, weekly matchup results and transactions for 2024-26 come from ESPN's fantasy API; each player's game-by-game stats "
      "come from ESPN game logs. Everything is cached so the analysis is repeatable.",
      "**Clean.** Managers are matched by ESPN account, not by team slot, because slots changed hands. Real names are reduced to first names before publishing.",
      "**Measure.** For every pick: points scored that season against what that pick slot usually produces. For every manager-season: ten draft habits.",
-     "**Test.** Habits are compared with win rate by rank correlation, with bootstrap 95% ranges. Drafting styles use graph spectral clustering, checked by "
+     "**Graph.** Each manager's habits are standardised; every pair gets a link strength from a Gaussian kernel. The normalised graph Laplacian's "
+     "eigenvectors give the map, its eigengap the number of groups, and k-means on the eigenvectors the groups.",
+     "**Test.** Habits are compared with win rate by rank correlation, with bootstrap 95% ranges. The drafting styles are checked by "
      "a permutation test. The NHL-team theory compares each player with his teammates only and shuffles whole teams to see what luck looks like."],
 )
 math((r"\text{draft value} = \text{points scored} - (a + b \ln(\text{pick number}))", "A pick's value is how far it beat the typical points for its slot; a and b are fit on every pick that season."),
+     (r"w_{ij} = \exp\!\left(-\frac{\lVert z_i - z_j \rVert^2}{2\sigma^2}\right), \qquad L = I - D^{-1/2} W D^{-1/2}",
+      "Link strength between managers i and j (z = their standardised habits, sigma = the typical distance). L is the normalised graph Laplacian; "
+      "D holds each manager's total link strength. Its smallest eigenvectors place the managers on the map."),
      (r"\rho = \text{correlation of the ranks of two measures, from } -1 \text{ to } +1", "Spearman rank correlation: +1 means the habit and win rate always rise together."))
 definitions([
     ("ADP", "Average draft position: where a player usually goes in ESPN drafts. It is the crowd's ranking."),
@@ -142,7 +167,9 @@ definitions([
     ("Win rate", "Share of weekly head-to-head matchups a team won in the regular season."),
     ("Correlation", "How strongly two measures move together, from -1 to +1. Zero means no link."),
     ("95% range", "The range the true value most likely falls in. If it crosses zero, the link could be luck."),
+    ("Similarity graph", "Dots (managers) joined by lines whose strength says how alike two managers draft."),
     ("Spectral clustering", "Grouping by the eigenvectors of a similarity graph; similar items end up close together."),
+    ("Eigengap", "A jump in the graph's eigenvalues. A jump after the k-th one suggests the graph splits into k groups."),
     ("Permutation test", "Shuffle the data many times to see how often luck alone gives a result this strong."),
     ("Projection", "A preseason estimate of how many fantasy points a player will score."),
 ])

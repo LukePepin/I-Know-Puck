@@ -1,6 +1,6 @@
 {
  "season": 2027,
- "snapshot": "2026-10-01 23:52",
+ "snapshot": "2026-10-02 00:17",
  "teams": 12,
  "rounds": 26,
  "history_seasons": [
@@ -114,6 +114,20 @@
  "sd_extra": 11.483147887280857,
  "per_player_weekly_miss": 1.373428770983695,
  "team_uncertainty": 6.0,
+ "spectral": {
+  "k": 3,
+  "sigma": 4.388,
+  "p": 0.105,
+  "n_features": 10,
+  "eigenvalues": [
+   -0.0,
+   0.9666,
+   0.9827,
+   1.0306,
+   1.0485,
+   1.068
+  ]
+ },
  "sources": [
   "ESPN Fantasy (player projections, ADP and stats; league drafts, rosters, schedule and results)",
   "MoneyPuck (advanced stats)"

@@ -200,6 +200,9 @@ def main() -> None:
         tb = b.spectral.table().reset_index()
         tb["group"] = tb.cluster.map(lambda c: b.cluster_names.get(int(c), {}).get("name", f"Group {c + 1}"))
         write("styles.csv", pd.DataFrame({"manager": tb.manager.map(owner_label), "x": tb.x, "y": tb.y, "group": tb.group}))
+        names, W = tb.manager.map(owner_label).tolist(), b.spectral.affinity
+        i, j = np.triu_indices(len(names), 1)
+        write("style_links.csv", pd.DataFrame({"a": [names[k] for k in i], "b": [names[k] for k in j], "w": W[i, j].round(4)}))
         groups = [{"name": v["name"], "traits": v["traits"]} for v in b.cluster_names.values()]
     rates = T.projected_rates(panel, S, H.seasons)
     stn = T.stints(H.gamelogs, rates)
@@ -260,6 +263,8 @@ def main() -> None:
         "bench_usage": val.bench_factor, "bench_fit": bu, "groups": groups, "regular_weeks": int(ss.get("matchupPeriodCount", 24) or 24),
         "playoff_teams": int(ss.get("playoffTeamCount", 8) or 8), "current_week": week_now, "observed_weekly_sd": obs_sd, "model_weekly_sd": model_sd,
         "sd_extra": sd_extra, "per_player_weekly_miss": per_player_week, "team_uncertainty": team_unc,
+        "spectral": {"k": int(b.spectral.k), "sigma": round(b.spectral.sigma, 3), "p": round(p_styles, 3), "n_features": int(b.spectral.features.drop(columns=["n_picks"], errors="ignore").shape[1]),
+                     "eigenvalues": b.spectral.eigenvalues[:6].round(4).tolist()} if b.spectral is not None else None,
         "sources": ["ESPN Fantasy (player projections, ADP and stats; league drafts, rosters, schedule and results)", "MoneyPuck (advanced stats)"],
     })
     print(f"done -> {OUT}")
