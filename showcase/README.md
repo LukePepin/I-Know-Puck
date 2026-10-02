@@ -1,6 +1,6 @@
 # I Know Puck: public showcase
 
-A three-tab website about a 12-team ESPN fantasy hockey league: the models, the data and the visualizations.
+A three-tab website about my 12-team ESPN fantasy hockey league: the models, the data and the visualizations. Dark, phone-first layout.
 It reads only the snapshot in `data/`, makes no web requests and needs no credentials, so it is safe to host
 publicly.
 
@@ -12,7 +12,7 @@ streamlit run showcase/streamlit_app.py
 | Tab | What it shows |
 |---|---|
 | History | 2024-26 champions and standings, habits that go with winning, drafting-style map (graph spectral clustering), every past pick vs its slot, one theory tested |
-| Present | This week's matchups, power rankings, who beats whom, the 2026-27 draft board, bargains and reaches, every roster |
+| Present | This week's games, power rankings, the 2026-27 draft (positions by round, bargains and reaches), and a page for every team: roster, odds against each opponent, its draft |
 | Future | A live season simulation (10,000 seasons on the real schedule, playoff and title odds), how the models work, the tests, a whole-system overview |
 
 Every tab ends with **How this page is built** (where its data comes from and what is done to it), a short

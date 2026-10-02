@@ -1,10 +1,20 @@
 [theme]
-base = "light"
-primaryColor = "#1F3A5F"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F4F3EF"
-textColor = "#1B1B1B"
+base = "dark"
+primaryColor = "#6EA8EC"
+backgroundColor = "#0F1216"
+secondaryBackgroundColor = "#171B21"
+textColor = "#E8E4DA"
+linkColor = "#6EA8EC"
+borderColor = "#2A3038"
 font = "serif"
+headingFont = "serif"
+headingFontWeights = [800, 700, 700, 600, 600, 600]
+baseRadius = "small"
+showWidgetBorder = true
+chartCategoricalColors = ["#6EA8EC", "#E07B53", "#F0D27A", "#4EC69C", "#E58FC8"]
+
+[client]
+toolbarMode = "minimal"
 
 [browser]
 gatherUsageStats = false
