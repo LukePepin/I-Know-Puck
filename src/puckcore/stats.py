@@ -57,6 +57,15 @@ def paired_permutation_test(d: np.ndarray, n_perm: int = 20_000, alternative: st
     return float((np.sum(np.abs(null) >= abs(observed)) + 1) / (n_perm + 1))
 
 
+def paired_differences(baseline: np.ndarray, treatment: np.ndarray, higher_is_better: bool = True) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(baseline, treatment, d) over units where both arms are finite; d > 0 means treatment is better."""
+    b = np.asarray(baseline, dtype=float)
+    t = np.asarray(treatment, dtype=float)
+    mask = np.isfinite(b) & np.isfinite(t)
+    b, t = b[mask], t[mask]
+    return b, t, (t - b) if higher_is_better else (b - t)
+
+
 def compare_paired(
     baseline: np.ndarray,
     treatment: np.ndarray,
@@ -66,11 +75,7 @@ def compare_paired(
     seed: int = 0,
 ) -> PairedTestResult:
     """Full paired comparison. Differences are oriented so positive means treatment is better."""
-    b = np.asarray(baseline, dtype=float)
-    t = np.asarray(treatment, dtype=float)
-    mask = np.isfinite(b) & np.isfinite(t)
-    b, t = b[mask], t[mask]
-    d = (t - b) if higher_is_better else (b - t)
+    b, t, d = paired_differences(baseline, treatment, higher_is_better)
     sd = d.std(ddof=1) if len(d) > 1 else np.nan
     lo, hi = bootstrap_ci(d, seed=seed)
     try:

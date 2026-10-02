@@ -67,6 +67,11 @@ class LeagueSettings:
     pick_order: list[int] = field(default_factory=list)  # round-1 team ids
     my_team_id: int | None = None
     team_names: dict[int, str] = field(default_factory=dict)
+    lineup_lock: str = "INDIVIDUAL_GAME"  # ESPN lineupLocktimeType: per game (daily moves) or ..._WEEKLY (set once a week)
+
+    @property
+    def weekly_lineups(self) -> bool:
+        return "WEEKLY" in self.lineup_lock
 
     @property
     def rounds(self) -> int:

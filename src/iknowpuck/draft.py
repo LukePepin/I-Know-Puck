@@ -207,8 +207,11 @@ def recommend(
     n_candidates: int = 10,
     n_rollouts: int = 30,
     seed: int = 0,
+    extra: list[int] | None = None,
 ) -> pd.DataFrame:
-    """Rank candidate picks for the team on the clock by simulated P(win weekly matchup)."""
+    """Rank candidate picks for the team on the clock by simulated P(win weekly matchup).
+
+    extra: pool indices to evaluate as well (e.g. players from NHL teams the manager wants to stack)."""
     pick_no = len(picks)
     if pick_no >= len(ctx.order):
         return pd.DataFrame()
@@ -221,7 +224,7 @@ def recommend(
     fits = ctx.starter_fit(teams[on_clock], av_adp) > 0
     window = av_adp[fits][: n_candidates]
     top_vona = avail[np.argsort(-sc)[: max(2, n_candidates // 4)]]
-    cands = list(dict.fromkeys([*window.tolist(), *top_vona.tolist()]))
+    cands = list(dict.fromkeys([*window.tolist(), *top_vona.tolist(), *[int(j) for j in (extra or []) if not taken[j]]]))
 
     scores = np.zeros((len(cands), n_rollouts))
     avail_next = np.zeros(len(ctx.pool))
@@ -305,3 +308,43 @@ def predraft_plan(ctx: DraftContext, n_sims: int = 100, seed: int = 7) -> tuple[
             rows.append({"round": rnd, "overall": p + 1, "name": f.loc[j, "name"], "pos": f.loc[j, "pos"], "adp": f.loc[j, "adp"], "proj_value": ctx.value[j], "share": c / n_sims})
     summary = pd.DataFrame({"win_prob": scores, "weekly_points": weekly})
     return pd.DataFrame(rows), summary
+
+
+def crn_experiment(ctx: DraftContext, picks: list[tuple[int, int]], n_candidates: int = 6, n_rollouts: int = 30,
+                   seed: int = 0) -> tuple[list[int], np.ndarray, np.ndarray]:
+    """Evaluate the same candidates twice: with common random numbers (every candidate sees the same
+    simulated futures, as recommend() does) and with independent futures per candidate.
+
+    Returns (candidates, crn scores (C, R), independent scores (C, R)). The paired SE of a gap
+    between candidates is much smaller under CRN, which is why the recommender uses it."""
+    pick_no = len(picks)
+    taken, teams = ctx.initial_state(picks)
+    on_clock = ctx.order[pick_no]
+    av = ctx.adp_order[~taken[ctx.adp_order]]
+    cands = av[ctx.starter_fit(teams[on_clock], av) > 0][:n_candidates].tolist()
+    crn = np.zeros((len(cands), n_rollouts))
+    ind = np.zeros((len(cands), n_rollouts))
+    me = ctx.my_team
+    ctx.my_team = on_clock
+    try:
+        for r in range(n_rollouts):
+            for ci, c in enumerate(cands):
+                crn[ci, r] = ctx.rollout(taken, teams, pick_no, c, np.random.default_rng([seed, r]))[0]
+                ind[ci, r] = ctx.rollout(taken, teams, pick_no, c, np.random.default_rng([seed, r, ci + 1, 7919]))[0]
+    finally:
+        ctx.my_team = me
+    return cands, crn, ind
+
+
+def pick_distribution(ctx: DraftContext, n_rollouts: int = 100, seed: int = 11) -> np.ndarray:
+    """(n_rollouts, n_pool) overall pick index at which each player was taken (-1 = undrafted),
+    from whole-draft rollouts with the opponent model and the market-anchored policy."""
+    out = np.full((n_rollouts, len(ctx.pool)), -1, dtype=int)
+    slots_of = {tid: [p for p, t in enumerate(ctx.order) if t == tid] for tid in ctx.teams}
+    taken0, teams0 = ctx.initial_state([])
+    for r in range(n_rollouts):
+        _, _, teams = ctx.rollout(taken0, teams0, 0, None, np.random.default_rng([seed, r]))
+        for tid, t in teams.items():
+            for p, j in zip(slots_of[tid], t.roster):
+                out[r, j] = p
+    return out

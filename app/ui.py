@@ -13,12 +13,21 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from iknowpuck.config import RUNS_DIR  # noqa: E402
+from iknowpuck.config import RUNS_DIR, load_credentials  # noqa: E402
+from iknowpuck.data.dataset import build_panel  # noqa: E402
+from iknowpuck.data.espn import EspnClient  # noqa: E402
+from iknowpuck.diagnostics import matchups  # noqa: E402
 from iknowpuck.injuries import DEFAULT_GAMES_MISSED  # noqa: E402
-from iknowpuck.pipeline import build  # noqa: E402
+from iknowpuck.pipeline import FIRST_PANEL_SEASON, build  # noqa: E402
 
 NAVY, RUST, SAGE, SAND, PLUM, GREY = "#1F3A5F", "#A5452B", "#5E7D5B", "#C9A35B", "#6B5B8C", "#8A8A8A"
 PALETTE = [NAVY, RUST, SAGE, SAND, PLUM, GREY, "#3E7C8C", "#B07AA1", "#7F6A4C", "#4F6D7A", "#9C755F", "#59636E"]
+# Model pages: a 5-slot categorical order validated for colour-vision deficiency, chroma and contrast
+# (dataviz validate_palette.js: all checks pass on white). Use in this order; never cycle past 5.
+CAT = ["#2A6BB0", "#C0563B", "#8460B0", "#1F9A6E", "#B08A1E"]
+INK, MUTED, FAINT = "#1B1B1B", "#8A8A8A", "#D9D7D0"
+SEQ = [[0.0, "#F3F6FA"], [0.5, "#7FA3CC"], [1.0, "#1F3A5F"]]  # magnitude: one hue, light -> dark
+DIV = [[0.0, "#C0563B"], [0.5, "#EEEDEA"], [1.0, "#2A6BB0"]]  # polarity: rust <- neutral grey -> blue
 
 pio.templates["academic"] = go.layout.Template(
     layout=dict(
@@ -80,6 +89,63 @@ def injured_context(_bundle, season: int, overrides_key: tuple, defaults_key: tu
     """Pool and draft context with current injuries applied (cached per injury settings)."""
     pool = _bundle.injured_pool(dict(overrides_key), dict(defaults_key))
     return pool, _bundle.context(list(order), my_team, pool=pool)
+
+
+@st.cache_resource(show_spinner="Loading ten seasons of player data...")
+def get_panel(season: int):
+    """Every player-season 2018..season (ESPN + MoneyPuck), from the disk cache."""
+    return build_panel(list(range(FIRST_PANEL_SEASON, season + 1)), EspnClient(load_credentials()))
+
+
+@st.cache_resource(show_spinner="Loading weekly matchup scores from ESPN...")
+def get_matchups(seasons: tuple[int, ...]):
+    """(team-week matchup scores, scoring period -> week) for past seasons."""
+    return matchups(EspnClient(load_credentials()), list(seasons))
+
+
+def rgba(hex_color: str, alpha: float) -> str:
+    h = hex_color.lstrip("#")
+    return f"rgba({int(h[0:2], 16)},{int(h[2:4], 16)},{int(h[4:6], 16)},{alpha})"
+
+
+def label_positions(x, y, texts, x_range=None, y_range=None, width_px: int = 900, height_px: int = 480, font_px: int = 12) -> list[str]:
+    """Plotly textposition per point so direct labels don't collide with each other or with other dots.
+
+    Greedy: points from top to bottom, each tries above, below, right, left and keeps the first spot whose
+    estimated text box is clear (falls back to the least-overlapping spot). Pass the axis ranges so pixel
+    distances match the drawn chart."""
+    import numpy as np
+
+    x, y = np.asarray(x, float), np.asarray(y, float)
+    x0, x1 = x_range or (x.min(), x.max())
+    y0, y1 = y_range or (y.min(), y.max())
+    sx = (x - x0) / max(x1 - x0, 1e-9) * width_px
+    sy = (y - y0) / max(y1 - y0, 1e-9) * height_px
+    placed: list[tuple[float, float, float, float]] = []
+    out = [""] * len(x)
+    dot = 12.0
+
+    def box(i: int, where: str) -> tuple[float, float, float, float]:
+        w, h = 0.56 * font_px * len(texts[i]), font_px * 1.3
+        cx, cy = sx[i], sy[i]
+        return {"top center": (cx - w / 2, cy + dot, cx + w / 2, cy + dot + h), "bottom center": (cx - w / 2, cy - dot - h, cx + w / 2, cy - dot),
+                "middle right": (cx + dot, cy - h / 2, cx + dot + w, cy + h / 2), "middle left": (cx - dot - w, cy - h / 2, cx - dot, cy + h / 2)}[where]
+
+    def overlap(a, b) -> float:
+        return max(0.0, min(a[2], b[2]) - max(a[0], b[0])) * max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+
+    dots = [(sx[j] - dot / 2, sy[j] - dot / 2, sx[j] + dot / 2, sy[j] + dot / 2) for j in range(len(x))]
+    for i in np.argsort(-sy):
+        scores = {}
+        for where in ("top center", "bottom center", "middle right", "middle left"):
+            bx = box(i, where)
+            scores[where] = sum(overlap(bx, p) for p in placed) + sum(overlap(bx, d) for j, d in enumerate(dots) if j != i)
+            if scores[where] == 0:
+                break
+        best = min(scores, key=scores.get)
+        out[i] = best
+        placed.append(box(i, best))
+    return out
 
 
 def load_runs(n: int = 2) -> list[dict]:

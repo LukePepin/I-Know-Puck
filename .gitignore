@@ -14,3 +14,6 @@ runs/
 
 # personal injury overrides entered in the app
 data/injury_overrides.json
+
+# picks copied from the ESPN draft room
+data/draft_log.txt

@@ -1,0 +1,37 @@
+[
+ {
+  "assumption": "A team's weekly score follows a bell curve",
+  "result": "756 real weekly scores: skew +0.14, Shapiro-Wilk p = 0.30",
+  "verdict": "Holds"
+ },
+ {
+  "assumption": "The win-chance formula gives honest odds",
+  "result": "378 past matchups: Brier 0.224 vs 0.250 for a coin flip; winner called 64% of the time",
+  "verdict": "Holds"
+ },
+ {
+  "assumption": "Only the 20 starters really score (weekly lineup lock)",
+  "result": "real score = 0.92 x starters + 0.24 x bench over 756 team-weeks; the model now counts the bench at 0.25",
+  "verdict": "Fixed"
+ },
+ {
+  "assumption": "Our projections are right on average",
+  "result": "slope 0.98 (95% CI 0.92 to 1.03); ESPN's own: 0.73",
+  "verdict": "Holds"
+ },
+ {
+  "assumption": "Players' stats swing like the model says",
+  "result": "11 of 12 stats within 25%; variance inflation 1.36 measured vs 1.6 assumed",
+  "verdict": "Partly holds"
+ },
+ {
+  "assumption": "Opponents pick the way the model says",
+  "result": "actual pick in the model's top 5: 40% (ESPN order alone: 41%)",
+  "verdict": "Roughly holds"
+ },
+ {
+  "assumption": "Managers fall into distinct drafting styles",
+  "result": "permutation test p = 0.10",
+  "verdict": "Not supported"
+ }
+]

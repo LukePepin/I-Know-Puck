@@ -88,3 +88,11 @@ def test_spectral_separates_two_groups():
     feats = pd.DataFrame(np.vstack([a, b]), columns=list("wxyz"), index=[f"m{i}" for i in range(12)])
     res = spectral_clusters(feats, k=2)
     assert len(set(res.labels[:6])) == 1 and len(set(res.labels[6:])) == 1 and res.labels[0] != res.labels[6]
+
+
+def test_bench_usage_follows_lineup_lock():
+    st = points_settings()
+    assert Valuator(synthetic_pool(st)).bench_factor == 0.35
+    st.lineup_lock = "INDIVIDUAL_FIRSTGAME_WEEKLY"
+    v = Valuator(synthetic_pool(st))
+    assert v.bench_factor == v.goalie_bench_factor == 0.25

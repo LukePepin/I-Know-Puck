@@ -61,12 +61,15 @@ st.session_state["app"] = {
 page = st.navigation(
     {
         "Start here": [st.Page("app_pages/walkthrough.py", title="Walkthrough", icon=":material/menu_book:", default=True)],
-        "Before the draft": [
+        "Your league": [
             st.Page("app_pages/league_history.py", title="League history", icon=":material/history:"),
-            st.Page("app_pages/pre_draft.py", title="Pre-draft plan", icon=":material/checklist:"),
         ],
-        "Draft day": [st.Page("app_pages/draft.py", title="Draft room", icon=":material/sports_hockey:")],
-        "After the draft": [st.Page("app_pages/in_season.py", title="In-season moves", icon=":material/swap_horiz:")],
+        "How the models work": [
+            st.Page("app_pages/spectral_lab.py", title="Graph spectral analysis", icon=":material/hub:"),
+            st.Page("app_pages/assumptions.py", title="Assumption tests", icon=":material/fact_check:"),
+            st.Page("app_pages/optimization.py", title="Optimization", icon=":material/tune:"),
+            st.Page("app_pages/theory_tests.py", title="Theory tests", icon=":material/science:"),
+        ],
         "Lab presentation": [st.Page("app_pages/systems_engineering.py", title="Systems engineering", icon=":material/account_tree:")],
     },
     position="sidebar",

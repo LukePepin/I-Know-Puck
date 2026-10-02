@@ -16,6 +16,11 @@ A roster's weekly total in category c is modelled as Normal(mu_c, var_c):
 where u_i is usage (1 for a starter, ``bench_factor`` for bench) from an optimal slot assignment
 (linear_sum_assignment) and W is the number of weeks in the NHL season.
 
+Bench usage depends on the league's lineup lock. With daily lineups a bench player can fill a starter's
+off night (prior 0.35). With weekly locks (ESPN INDIVIDUAL_FIRSTGAME_WEEKLY) the bench only helps through
+the weekly lineup choice and injury cover: in this league's 2024-26 matchups, real weekly score ~ 0.92 x
+likely starters + 0.25 x bench points (bench 95% CI 0.20 to 0.29; diagnostics.bench_usage), so weekly leagues use 0.25.
+
 P(beat opponent in c) = Phi((mu_me - mu_opp) / sqrt(var_me + var_opp)), sign-flipped for reverse
 categories. The objective is expected categories won per week, averaged over opponents.
 """
@@ -40,6 +45,7 @@ DISPERSION = {
     STAT_IDS["GA"]: 1.2, STAT_IDS["FOW"]: 1.5,
 }
 EPS = 1e-9
+BENCH_USAGE = {"daily": 0.35, "weekly": 0.25}  # share of a bench player's points that end up counting (see module docstring)
 
 
 @dataclass
@@ -79,11 +85,13 @@ class PlayerPool:
 
 
 class Valuator:
-    def __init__(self, pool: PlayerPool, bench_factor: float = 0.35, goalie_bench_factor: float = 0.2):
+    def __init__(self, pool: PlayerPool, bench_factor: float | None = None, goalie_bench_factor: float | None = None):
         self.pool = pool
         self.st = pool.settings
-        self.bench_factor = bench_factor
-        self.goalie_bench_factor = goalie_bench_factor
+        weekly = getattr(self.st, "weekly_lineups", False)
+        default = BENCH_USAGE["weekly" if weekly else "daily"]
+        self.bench_factor = default if bench_factor is None else bench_factor
+        self.goalie_bench_factor = (0.2 if not weekly else default) if goalie_bench_factor is None else goalie_bench_factor
         self.points_mode = self.st.is_points
         self.cats = self.st.scoring_categories
         if self.points_mode:
@@ -123,10 +131,11 @@ class Valuator:
             z += (v - v[order].mean()) / sd
         return z
 
-    def usage(self, roster: list[int]) -> np.ndarray:
-        """Optimal starter assignment -> usage weight per rostered player."""
-        if not roster:
-            return np.zeros(0)
+    def assignment(self, roster: list[int]) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Hungarian (linear_sum_assignment) of rostered players to lineup slots.
+
+        Returns (cost matrix players x slot_list, assigned rows, assigned slot columns, starter flag per
+        slot). Cost is minus the player's value for a starting slot, ~0 for bench, 1e6 if ineligible."""
         r = np.asarray(roster)
         slot_idx = [self.pool.slot_types.index(s) for s in self.slot_list]
         elig = self.pool.elig[np.ix_(r, slot_idx)]
@@ -134,8 +143,15 @@ class Valuator:
         starter = np.array([s != BENCH_SLOT for s in self.slot_list])
         cost = np.where(elig, -(w[:, None] * np.where(starter, 1.0, 1e-3)[None, :]), 1e6)
         rows, cols = linear_sum_assignment(cost)
-        u = np.zeros(len(r))
-        is_g = self.pool.is_goalie[r]
+        return cost, rows, cols, starter
+
+    def usage(self, roster: list[int]) -> np.ndarray:
+        """Optimal starter assignment -> usage weight per rostered player."""
+        if not roster:
+            return np.zeros(0)
+        cost, rows, cols, starter = self.assignment(roster)
+        u = np.zeros(len(roster))
+        is_g = self.pool.is_goalie[np.asarray(roster)]
         for i, j in zip(rows, cols):
             if cost[i, j] >= 1e6:
                 continue

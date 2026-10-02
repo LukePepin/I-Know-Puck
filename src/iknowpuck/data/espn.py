@@ -130,6 +130,14 @@ class EspnClient:
             )
         return pd.DataFrame(rows)
 
+    def rosters(self, season: int) -> dict[int, list[int]]:
+        """Team id -> ESPN player ids on the roster right now (empty before the draft)."""
+        try:
+            raw = self.league_raw(season, ["mRoster"], max_age_s=300)
+        except EspnError:
+            return {}
+        return {int(t["id"]): [int(e["playerId"]) for e in (t.get("roster") or {}).get("entries", []) if e.get("playerId")] for t in raw.get("teams", [])}
+
     def seasons_available(self) -> list[int]:
         raw = self.league_raw(self.creds.season, ["mStatus"])
         prev = raw.get("status", {}).get("previousSeasons", [])
@@ -196,6 +204,7 @@ def parse_settings(raw: dict) -> LeagueSettings:
         pick_order=list(st.get("draftSettings", {}).get("pickOrder", [])),
         matchup_weeks=int(sched.get("matchupPeriodCount", 24) or 24),
         team_names={t["id"]: _team_name(t) for t in raw.get("teams", [])},
+        lineup_lock=st.get("rosterSettings", {}).get("lineupLocktimeType", "INDIVIDUAL_GAME") or "INDIVIDUAL_GAME",
     )
     if cats:
         ls.categories = cats

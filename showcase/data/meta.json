@@ -1,0 +1,113 @@
+{
+ "season": 2027,
+ "snapshot": "2026-09-27",
+ "teams": 12,
+ "rounds": 26,
+ "history_seasons": [
+  2024,
+  2025,
+  2026
+ ],
+ "scoring": [
+  {
+   "stat": "OTL",
+   "points": 1.0
+  },
+  {
+   "stat": "SOG",
+   "points": 0.1
+  },
+  {
+   "stat": "HIT",
+   "points": 0.1
+  },
+  {
+   "stat": "A",
+   "points": 1.0
+  },
+  {
+   "stat": "SO",
+   "points": 3.0
+  },
+  {
+   "stat": "BLK",
+   "points": 0.5
+  },
+  {
+   "stat": "GA",
+   "points": -2.0
+  },
+  {
+   "stat": "PPP",
+   "points": 0.5
+  },
+  {
+   "stat": "SHP",
+   "points": 0.5
+  },
+  {
+   "stat": "G",
+   "points": 2.0
+  },
+  {
+   "stat": "W",
+   "points": 4.0
+  },
+  {
+   "stat": "SV",
+   "points": 0.2
+  }
+ ],
+ "lineup": {
+  "C": 4,
+  "LW": 4,
+  "RW": 4,
+  "D": 6,
+  "G": 2,
+  "BN": 6,
+  "IR": 3
+ },
+ "lineup_lock": "weekly",
+ "bench_usage": 0.25,
+ "bench_fit": {
+  "starters": 0.91579930104939,
+  "bench": 0.2447839986375527,
+  "bench_lo": 0.19811343081815325,
+  "bench_hi": 0.29145456645695217,
+  "team_weeks": 756,
+  "real_mean": 105.13690476190476,
+  "starters_mean": 108.23955026455025,
+  "bench_mean": 24.045370370370375
+ },
+ "author_slot": 6,
+ "groups": [
+  {
+   "name": "Goalie Grabbers",
+   "traits": [
+    "sticks to the rankings",
+    "spreads across NHL teams",
+    "grabs goalies early"
+   ]
+  },
+  {
+   "name": "Patient Builders",
+   "traits": [
+    "skaters early",
+    "waits on goalies",
+    "reaches ahead of the rankings"
+   ]
+  },
+  {
+   "name": "Aggressive Reachers",
+   "traits": [
+    "goalies early",
+    "reaches ahead of the rankings",
+    "stockpiles goalies"
+   ]
+  }
+ ],
+ "sources": [
+  "ESPN Fantasy (public player projections, ADP and stats; league drafts and results)",
+  "MoneyPuck (advanced stats)"
+ ]
+}

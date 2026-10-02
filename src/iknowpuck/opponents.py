@@ -122,12 +122,16 @@ class ObsArrays:
         )
 
 
-def _pick_loglik(theta_obs: np.ndarray, b_need: float, A: ObsArrays) -> np.ndarray:
-    """theta_obs: (n, 1 + N_POS) coefficients for the manager making each pick."""
+def _pick_utilities(theta_obs: np.ndarray, b_need: float, A: ObsArrays) -> np.ndarray:
+    """theta_obs: (n, 1 + N_POS) coefficients for the manager making each pick. -inf outside the choice set."""
     pos = theta_obs[:, 1:].reshape(-1, len(GROUPS), len(PHASES))[np.arange(len(A.phase)), :, A.phase]  # (n, 3)
     pos = pos - pos[:, :1]  # forwards are the reference group (identifiability)
     u = theta_obs[:, :1] * A.la + b_need * A.need + np.take_along_axis(pos, A.grp, axis=1)
-    u = np.where(A.mask, u, -np.inf)
+    return np.where(A.mask, u, -np.inf)
+
+
+def _pick_loglik(theta_obs: np.ndarray, b_need: float, A: ObsArrays) -> np.ndarray:
+    u = _pick_utilities(theta_obs, b_need, A)
     return u[np.arange(len(u)), A.chosen] - logsumexp(u, axis=1)
 
 
@@ -189,6 +193,12 @@ class OpponentModel:
         A = ObsArrays.from_obs(obs, self.managers)
         th_obs = np.array([self.theta(o.manager) for o in obs])
         return _pick_loglik(th_obs, self.b_need, A)
+
+    def choice_probs(self, obs: list[PickObs]) -> tuple[np.ndarray, ObsArrays]:
+        """(n, C) probability of each player in each pick's choice set (0 outside it)."""
+        A = ObsArrays.from_obs(obs, self.managers)
+        u = _pick_utilities(np.array([self.theta(o.manager) for o in obs]), self.b_need, A)
+        return np.exp(u - logsumexp(u, axis=1, keepdims=True)), A
 
     def utilities(self, manager: str | None, rnd: int, neg_log_adp: np.ndarray, grp: np.ndarray, need: np.ndarray) -> np.ndarray:
         th = self.theta(manager)

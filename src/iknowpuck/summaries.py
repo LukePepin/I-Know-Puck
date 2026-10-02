@@ -137,6 +137,7 @@ PLAIN_QUESTIONS = {
     "H2a": "Does chasing 'bargains' that only our model likes beat the rankings?",
     "H3": "Can we predict each manager's picks better than one league-wide model?",
     "H4": "Does grouping similar managers make those predictions better?",
+    "H5": "Does a hot or cold NHL team tell you more about its players' rest of season than their own numbers do?",
 }
 PLAIN_MEANING = {
     ("H1", "yes"): "Our projections are used for every player.",
@@ -149,6 +150,9 @@ PLAIN_MEANING = {
     ("H4", "no"): "Grouping managers made pick predictions slightly worse, so the groups are used for scouting insight only.",
     ("H3", "no"): "Per-manager models predicted picks worse, so the simulator uses the league-wide model.",
     ("H1b", "tie"): "No clear gain, so the advanced stats could be dropped without losing accuracy.",
+    ("H5", "yes"): "Players on teams that start hot are worth a little extra for the rest of the season.",
+    ("H5", "tie"): "Judge a player by his own season so far; his team's hot or cold start adds nothing (Theory tests page).",
+    ("H5", "no"): "Adding the team's start made rest-of-season predictions worse: judge a player by his own season so far (Theory tests page).",
 }
 
 

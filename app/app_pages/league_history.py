@@ -1,4 +1,4 @@
-"""League history: who wins and how, managers, past drafts, trades and pickups, injuries."""
+"""League history: who wins and how, managers, past drafts, pickups, injuries. (The trade analyzer is archived in archive/.)"""
 
 import altair as alt
 import numpy as np
@@ -55,9 +55,9 @@ def draft_table(_b, season: int) -> pd.DataFrame:
 
 
 st.markdown("## League history")
-st.caption("Three seasons of your league (2024 to 2026): drafts, trades, pickups, injuries and results.")
+st.caption("Three seasons of your league (2024 to 2026): drafts, pickups, injuries and results.")
 section = st.segmented_control(
-    "Section", ["Overview", "Managers", "Past drafts", "Trades and pickups", "Injuries"],
+    "Section", ["Overview", "Managers", "Past drafts", "Pickups", "Injuries"],
     default="Overview", key="lh_section", label_visibility="collapsed",
 )
 if H is None:
@@ -244,13 +244,6 @@ elif section == "Managers":
         st.dataframe(mp[["season", "round", "overall", "player", "pos", "nhl", "adp", "actual_pts", "games"]].sort_values(["season", "overall"]),
                      hide_index=True, column_config={"adp": st.column_config.NumberColumn("ADP", format="%.0f"),
                                                      "actual_pts": st.column_config.NumberColumn("actual pts", format="%.0f")})
-    ts = H.trade_summary()
-    if len(ts):
-        mt = ts[(ts.owner_a == pick) | (ts.owner_b == pick)]
-        if len(mt):
-            st.markdown("**Trades**")
-            st.dataframe(mt.assign(a=mt.owner_a.map(who), b=mt.owner_b.map(who), won=mt.winner.map(who))[
-                ["season", "date", "a", "received_a", "points_a", "b", "received_b", "points_b", "won"]].round(0), hide_index=True)
     bp = H.best_pickups(40)
     mb = bp[bp.owner_id == pick].head(8)
     if len(mb):
@@ -316,38 +309,7 @@ elif section == "Past drafts":
                                                             "actual_pts": st.column_config.NumberColumn("actual pts", format="%.0f")})
 
 # ======================================================================================================
-elif section == "Trades and pickups":
-    ts = H.trade_summary()
-    st.markdown("### Every completed trade")
-    if len(ts):
-        view = ts.assign(a=ts.owner_a.map(who), b=ts.owner_b.map(who), won=ts.winner.map(who))
-        st.dataframe(view[["season", "date", "a", "received_a", "points_a", "b", "received_b", "points_b", "won", "margin"]].round(0), hide_index=True,
-                     column_config={"a": "manager A", "received_a": "A received", "points_a": "A's points after", "b": "manager B",
-                                    "received_b": "B received", "points_b": "B's points after", "won": "won the trade", "margin": "margin"})
-        st.caption("Points after = fantasy points the received players scored for their new team for the rest of the season.")
-        # trade network
-        counts = pd.concat([ts[["owner_a", "owner_b"]]]).value_counts().reset_index(name="n")
-        nodes = sorted(set(counts.owner_a) | set(counts.owner_b), key=who)
-        ang = np.linspace(0, 2 * np.pi, len(nodes), endpoint=False)
-        pos = {n_: (np.cos(a), np.sin(a)) for n_, a in zip(nodes, ang)}
-        deg = pd.concat([counts.owner_a, counts.owner_b]).value_counts()
-        fig = go.Figure()
-        for r in counts.itertuples():
-            (x0, y0), (x1, y1) = pos[r.owner_a], pos[r.owner_b]
-            fig.add_scatter(x=[x0, x1], y=[y0, y1], mode="lines", line=dict(width=2 + 3 * r.n, color=GREY), hoverinfo="text",
-                            text=f"{who(r.owner_a)} and {who(r.owner_b)}: {r.n} trade(s)", showlegend=False)
-        fig.add_scatter(x=[pos[n_][0] for n_ in nodes], y=[pos[n_][1] for n_ in nodes], mode="markers+text", text=[who(n_) for n_ in nodes],
-                        textposition="top center", marker=dict(size=[14 + 8 * deg.get(n_, 0) for n_ in nodes], color=[RUST if n_ == my_owner else NAVY for n_ in nodes]),
-                        hovertext=[f"{who(n_)}: {deg.get(n_, 0)} trade(s)" for n_ in nodes], hoverinfo="text", showlegend=False)
-        fig.update_layout(title="Trade network (thicker line = more trades; bigger dot = more trades made)",
-                          xaxis=dict(visible=False, range=[-1.5, 1.5]), yaxis=dict(visible=False, range=[-1.4, 1.4]))
-        fig_show(fig, 460)
-        wins = ts.winner.map(who).value_counts()
-        note(f"**{len(ts)} trades** went through in three seasons, so trading is rare in your league. Trades winners: " +
-             ", ".join(f"{k} {v}" for k, v in wins.items()) + ". Trades explain about 1% of all points scored.")
-    else:
-        st.info("No completed trades found.")
-
+elif section == "Pickups":
     st.markdown("### Best waiver-wire pickups")
     bp = H.best_pickups(10)
     bp["manager"] = bp.owner_id.map(who)
@@ -431,4 +393,4 @@ elif section == "Injuries":
                  column_config={"adp": st.column_config.NumberColumn("ADP", format="%.0f"),
                                 "avg_missed": st.column_config.NumberColumn("avg games missed / season", format="%.1f"),
                                 "games_missed_assumed": st.column_config.NumberColumn("games missed assumed this year", format="%.0f")})
-    st.caption("Among the top 200 by ADP. A history of missed games already lowers each player's games-played projection; current injuries are handled on the Pre-draft plan page.")
+    st.caption("Among the top 200 by ADP. A history of missed games already lowers each player's games-played projection; current injuries lower this season's values automatically.")

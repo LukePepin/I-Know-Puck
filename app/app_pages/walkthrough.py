@@ -44,37 +44,25 @@ short += [
 for s_ in short:
     st.markdown(f"- {s_}")
 
-# --- action checklist --------------------------------------------------------------------------
-st.markdown("### Your game plan, step by step")
-st.caption("The pages in the left-hand menu follow this order.")
+# --- what's here now ---------------------------------------------------------------------------
+st.markdown("### What's in this app now")
+st.caption("The 2027 draft is done. The draft-day tools (Pre-draft plan, Draft room) and the trade analyzer are archived in the "
+           "archive/ folder, and the add/drop notifier has been removed.")
 c1, c2, c3 = st.columns(3)
 with c1:
     with st.container(border=True):
-        st.markdown("#### Before the draft")
-        st.markdown(
-            f"1. **Check the left-hand panel.** \"My team\" should say **{me_name}**" + (f" and your slot should be **{slot}**." if slot else ".") + " "
-            "If ESPN changed the pick order, press **Rebuild data and models**.\n"
-            "2. **Read League history.** See who grabs goalies early, who reaches, and which NHL teams people love.\n"
-            "3. **Open Pre-draft plan and check the injury list.** Change the games-missed number for anyone you have news about.\n"
-            "4. **Press \"Simulate plan\".** Write down the two or three names it shows for each of your first rounds."
-        )
+        st.markdown("#### Your league")
+        st.markdown("**League history:** who wins and how, each manager's habits, every past draft, the best pickups, and injury luck.")
 with c2:
     with st.container(border=True):
-        st.markdown("#### During the draft")
-        st.markdown(
-            "5. **Open Draft room and turn on \"Live sync with ESPN draft\".** Picks appear by themselves.\n"
-            "6. **When it says \"You are on the clock\",** read the green **Suggested pick** box and draft that player.\n"
-            "7. **Tied bars** (same blue) are equally good picks.\n"
-            "8. **If live sync stops,** add picks yourself with **Record a pick**. **Undo last pick** fixes mistakes."
-        )
+        st.markdown("#### How the models work")
+        st.markdown("**Graph spectral analysis**, **Assumption tests**, **Optimization** and **Theory tests**: the methods behind the "
+                    "suggestions, each with interactive charts and an honest check of whether it holds up.")
 with c3:
     with st.container(border=True):
-        st.markdown("#### After the draft")
-        st.markdown(
-            "9. **Open In-season moves once a week.** It lists the free agents who would raise your weekly points most, and who to drop.\n"
-            "10. **Stay active on the waiver wire.** In your league, managers who made more pickups won more games than their draft alone predicted (borderline evidence). Strong drafters needed fewer pickups, so this is about making the most of the team you drafted.\n"
-            "11. **Re-check injuries.** Lower the games-missed numbers as players return."
-        )
+        st.markdown("#### Lab presentation")
+        st.markdown("**Systems engineering:** requirements, verification, findings and a short talk outline. A simpler public version of "
+                    "this project lives in the showcase/ folder.")
 st.markdown("#### Rules of thumb from your league's history")
 rules = ["Rounds 1 to 6: mostly forwards. Take a defenseman only if he is clearly the best player left."]
 if g_one:
@@ -82,7 +70,7 @@ if g_one:
     rules.append(f"First goalie: by about round {max(2, round(g_one) - 1)}. Second goalie: by about round {second}.")
 rules += [
     "Never reach far ahead of a player's ESPN ranking just because our projection likes him.",
-    "Injured stars: the app lowers their value by the games they are expected to miss. If you know better, change the number on the Pre-draft plan page.",
+    "Injured stars: the app lowers their value by the games they are expected to miss.",
     "Late rounds: take the best projected player who fits an empty spot on your roster.",
 ]
 for r_ in rules:
@@ -91,6 +79,8 @@ for r_ in rules:
 # --- how it works ------------------------------------------------------------------------------
 st.markdown("---")
 st.markdown("### How it works, in seven simple steps")
+st.caption("For the full detail with interactive charts, see the pages under **How the models work** in the left menu: "
+           "Graph spectral analysis, Assumption tests (every model assumption checked against your league's real results) and Optimization.")
 
 st.markdown("#### Step 1. What wins in your league?")
 c1, c2 = st.columns([3, 2])
@@ -177,7 +167,8 @@ with c2:
     )
 with st.expander("Technical details"):
     st.markdown(
-        "Players are slotted by the Hungarian algorithm (starters count fully, bench about one third because daily lineups let them fill idle days). "
+        "Players are slotted by the Hungarian algorithm: the 20 starters count fully. Your league locks lineups weekly, so bench players count only about a quarter "
+        "(weekly lineup choices and injury cover), a share measured from your league's real weekly scores. "
         "Weekly team points are modelled as Normal: the mean is expected weekly points and the variance comes from over-dispersed Poisson variation in each scoring stat, "
         "inflated for correlation between stats. P(win) = Phi((mu_me - mu_opp) / sqrt(var_me + var_opp)), averaged over the other rosters."
     )
@@ -195,7 +186,7 @@ with c2:
     st.markdown(
         "We studied every pick your league made in its last three drafts. **People in your league mostly follow ESPN's rankings, but not always.** "
         "So the app can't know exactly who will be gone before your next turn, but it can give good odds. "
-        "That is where the \"available next pick\" percentage in the Draft room comes from."
+        "That is where the \"available next pick\" percentage in the draft simulator comes from."
     )
 with st.expander("Technical details"):
     st.markdown(
@@ -214,7 +205,7 @@ with st.expander("Technical details"):
     st.markdown(
         "Monte Carlo rollouts with common random numbers (every candidate sees the same simulated futures, so the comparison between them is precise). "
         "Inside each rollout your later picks use the market-anchored policy: the highest projected value among the next two roster-fitting players by ADP. "
-        "The Draft room reports each candidate's gap to the best with its paired standard error; gaps within about two standard errors count as ties."
+        "The draft room (now archived) reported each candidate's gap to the best with its paired standard error; gaps within about two standard errors count as ties."
     )
 
 st.markdown("#### Step 7. Grouping the managers")

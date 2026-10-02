@@ -9,6 +9,9 @@ H3  per-manager logit predicts picks better than a  unit: held-out pick (leave-o
     league-wide ADP logit
 H4  spectral-cluster pooling improves per-manager   unit: held-out pick, log-likelihood
     models over independent shrinkage
+H5  a team's first-half surprise improves second-   unit: skater-season on one NHL team (2024-26), |points
+    half projections beyond the player's own half      per game error| in the second half, leave-one-season-out
+    (added after an exploratory look at the same seasons; confirmatory only on future seasons)
 """
 
 from __future__ import annotations
@@ -29,6 +32,7 @@ from .opponents import OpponentModel, build_observations
 from .pipeline import FIRST_PANEL_SEASON, fantasy_points
 from .projections import Blender, MarketAdjuster, OwnModel, fill_projection, modeled_stats, season_frame
 from .spectral import manager_features, spectral_clusters
+from .team_effects import halves, loso_errors, projected_rates
 from .valuation import PlayerPool, Valuator
 
 TEST_SEASONS = (2024, 2025, 2026)
@@ -205,6 +209,23 @@ def h4(seed: int) -> ExperimentOutput:
     return ExperimentOutput(_loso_loglik("independent"), _loso_loglik("spectral"), unit="held-out pick (leave-one-season-out)")
 
 
+# --- H5 ----------------------------------------------------------------------------------------
+@lru_cache(maxsize=1)
+def _halves() -> pd.DataFrame:
+    from .pipeline import build  # the cached bundle holds the league game logs
+
+    settings, panel, _ = _data()
+    hist = build(load_credentials().season).history
+    return halves(hist.gamelogs, hist.schedules, projected_rates(panel, settings, hist.seasons))
+
+
+def h5(seed: int) -> ExperimentOutput:
+    e = loso_errors(_halves())
+    return ExperimentOutput(e["own"], e["own + team"], unit="skater-season on one NHL team (2024-26), second half",
+                            extras={"mae_projection": float(e["projection"].mean()), "mae_own": float(e["own"].mean()),
+                                    "mae_own_team": float(e["own + team"].mean())})
+
+
 def suite(quick: bool = False) -> list[Experiment]:
     exps = [
         Experiment("H1", "Blended projections have lower fantasy-point error than ESPN projections",
@@ -216,6 +237,9 @@ def suite(quick: bool = False) -> list[Experiment]:
                    "Equal predictive log-likelihood", "pick log-likelihood", "league-wide logit", "per-manager + spectral", h3),
         Experiment("H4", "Pooling managers by spectral cluster beats independent shrinkage", "Equal predictive log-likelihood",
                    "pick log-likelihood", "independent per-manager", "spectral-pooled per-manager", h4),
+        Experiment("H5", "Adding the NHL team's first-half surprise to a player's own first half lowers second-half error",
+                   "Equal error", "abs points-per-game error, second half", "projection + own first half",
+                   "+ teammates' first half", h5, higher_is_better=False, config={"min_games_each_half": 15}),
     ]
     if not quick:
         exps.append(Experiment("H2", "Market-anchored policy yields higher actual P(win weekly matchup) than drafting by ADP",

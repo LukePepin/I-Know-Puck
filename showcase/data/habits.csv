@@ -1,0 +1,16 @@
+strategy,rho,ci_low,ci_high
+Defense share of rounds 1-6,-0.3745,-0.6221,-0.07751
+Follows market order (Spearman),-0.2915,-0.5786,0.03083
+First goalie round (higher = waited),-0.2142,-0.5149,0.1295
+"Reach vs market, rounds 1-6 (>0 = early)",-0.001944,-0.3445,0.3249
+Trades made,0.02331,-0.4017,0.4253
+Most players from one NHL team (stacking),0.05098,-0.3075,0.3771
+Injury luck (points not lost to injuries vs league),0.08632,-0.2718,0.4351
+Goalies taken in rounds 1-3,0.2259,-0.09758,0.5101
+"Draft value added, rounds 1-6 (actual pts vs slot)",0.2314,-0.1165,0.547
+Lineup changes (rank within season),0.2363,-0.1679,0.5629
+Share of points from pickups,0.2399,-0.1084,0.5375
+Waiver activity (rank within season),0.3041,-0.05283,0.6165
+"Draft skill (value added, injuries evened out)",0.4556,0.09059,0.7248
+"Draft value added, all rounds",0.4942,0.14,0.7534
+Actual pts of best 16 drafted players,0.529,0.1902,0.7592

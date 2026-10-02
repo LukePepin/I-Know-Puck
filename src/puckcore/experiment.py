@@ -6,6 +6,7 @@
     4. Analyze     - paired permutation / Wilcoxon / t tests, bootstrap CI, effect size
     5. Correct     - Holm-Bonferroni across every hypothesis in the suite
     6. Report      - results.json + report.md with git commit, seed and config for reproduction
+                     (results.json also keeps each unit's paired difference for assumption checks)
 
 Plugins define experiments; this module never needs to change when the domain does.
 """
@@ -21,7 +22,7 @@ from typing import Any, Callable
 
 import numpy as np
 
-from .stats import PairedTestResult, compare_paired, holm_bonferroni
+from .stats import PairedTestResult, compare_paired, holm_bonferroni, paired_differences
 
 
 @dataclass
@@ -55,6 +56,7 @@ class ExperimentResult:
     unit: str
     extras: dict[str, Any]
     seconds: float
+    diffs: np.ndarray = field(default_factory=lambda: np.zeros(0))  # per-unit paired differences (+ = treatment better)
 
     def to_dict(self) -> dict:
         e = self.experiment
@@ -70,6 +72,7 @@ class ExperimentResult:
             "test": self.test.to_dict(),
             "extras": _jsonable(self.extras),
             "seconds": round(self.seconds, 2),
+            "diffs": [round(float(x), 6) for x in self.diffs],  # kept so test assumptions can be checked later
         }
 
 
@@ -103,7 +106,8 @@ def run_experiment(exp: Experiment, seed: int = 0) -> ExperimentResult:
         alternative=exp.alternative,
         seed=seed,
     )
-    return ExperimentResult(exp, test, out.unit, out.extras, time.time() - t0)
+    _, _, d = paired_differences(out.baseline, out.treatment, exp.higher_is_better)
+    return ExperimentResult(exp, test, out.unit, out.extras, time.time() - t0, d)
 
 
 def run_suite(

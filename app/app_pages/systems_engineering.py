@@ -54,7 +54,7 @@ digraph G {
   subgraph cluster_decide { label="Decision engine"; color="#8A8A8A"; fontname="Georgia";
     mc [label="Monte Carlo rollouts\\ncommon random numbers"]; ws [label="Waiver optimiser\\nadd/drop search"]; }
   subgraph cluster_ui { label="Interface"; color="#8A8A8A"; fontname="Georgia"; ui [label="Streamlit app\\n6 pages"]; }
-  subgraph cluster_vv { label="Verification & validation"; color="#8A8A8A"; fontname="Georgia"; tests [label="Unit tests"]; exps [label="Experiment suite\\nH1-H4, Holm"]; }
+  subgraph cluster_vv { label="Verification & validation"; color="#8A8A8A"; fontname="Georgia"; tests [label="Unit tests"]; exps [label="Experiment suite\\nH1-H5, Holm"]; }
   espn -> cache; mp -> cache; cache -> proj; cache -> hist; cache -> opp; proj -> mkt -> inj -> val; val -> mc; opp -> mc; spec -> opp [style=dashed, label="tested H4"];
   hist -> spec; hist -> inj; val -> ws; mc -> ui; ws -> ui; hist -> ui; exps -> ui [style=dashed]; tests -> proj [style=dashed]; exps -> proj [style=dashed]; exps -> mc [style=dashed];
 }
@@ -116,7 +116,7 @@ findings = [
     ("Results replicate", "The full experiment suite was run twice with different random seeds; every verdict matched."),
     ("Data quality is a system risk", "ESPN returns a row for every team game (not only games played), wiped one season's ADP, and logged far fewer lineup moves in later seasons. "
      "Each needed a detection check and a documented fix."),
-    ("In-season behaviour matters", "Beyond draft quality, managers who made more waiver pickups won more (borderline evidence). This motivated the In-season moves page."),
+    ("In-season behaviour matters", "Beyond draft quality, managers who made more waiver pickups won more (borderline evidence). This motivated an in-season add/drop page (since removed)."),
 ]
 for t, d in findings:
     with st.container(border=True):
@@ -165,7 +165,7 @@ slides = [
     ("3. Method (75 s)", "Projections + market adjustment, valuation by optimal slotting, opponent logit, Monte Carlo with common random numbers.", "Walkthrough, steps 2-6"),
     ("4. Verification (75 s)", "Pre-registered hypotheses, paired tests, Holm correction, replication; show the scorecard.", "Walkthrough scorecard"),
     ("5. Critical findings (90 s)", "Leakage caught by verification; winner's curse; negative results kept honest.", "This page, section 5"),
-    ("6. Live demo (60 s)", "Draft room: suggested pick with uncertainty and availability; manager map click-through.", "Draft room, League history"),
+    ("6. Live demo (60 s)", "Model pages: the optimization and theory tests; manager map click-through.", "Optimization, League history"),
     ("7. Transfer (30 s)", "What moves to other projects (next section).", "This page, section 9"),
 ]
 st.dataframe(pd.DataFrame(slides, columns=["Slide", "Message", "Show in the app"]), hide_index=True)

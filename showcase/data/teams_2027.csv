@@ -1,0 +1,13 @@
+team,slot,weekly_pts,weekly_sd,win_chance,starters_weekly,bench_weekly,injured,top_stack,goalies,draft_value_vs_adp,best_value,biggest_reach,rank
+Luke (author),6,104.9,17.52,0.5579,100.8,4.084,1,VGK x3,3,115.3,"Tomas Hertl (R10, +22)","Brock Faber (R9, -18)",1
+Team 1,1,103.3,16.64,0.53,97.81,5.448,4,BUF x3,2,76.07,"Mathew Barzal (R13, +32)","Quinn Hughes (R4, -19)",2
+Team 12,12,103,17.23,0.5247,98.34,4.651,0,NYR x3,4,191.4,"Alex Laferriere (R12, +57)","Roman Josi (R5, -10)",3
+Team 11,11,103,17.36,0.5246,97.63,5.364,0,BOS x4,3,206.4,"Morgan Geekie (R6, +45)","Cole Caufield (R1, +2)",4
+Team 3,3,102.7,17.89,0.5192,98.57,4.127,2,WSH x3,4,135.5,"John Gibson (R11, +32)","Erik Karlsson (R10, -19)",5
+Team 7,7,101.9,16.98,0.5048,96.79,5.088,1,NYR x3,3,283.6,"Will Cuylle (R12, +53)","Jordan Kyrou (R14, -9)",6
+Team 9,9,101.5,16.93,0.4978,97.15,4.336,1,SJS x3,3,244.1,"Gabriel Vilardi (R11, +42)","Shayne Gostisbehere (R14, -7)",7
+Team 2,2,101.4,17.35,0.4963,97.34,4.058,5,EDM x2,4,239,"Mikael Granlund (R13, +50)","Rasmus Dahlin (R5, -11)",8
+Team 10,10,101,16.64,0.4882,96.38,4.576,2,SEA x3,4,138,"Justin Faulk (R12, +32)","Logan Thompson (R5, -8)",9
+Team 4,4,100.9,16.77,0.4867,97.28,3.597,3,NYR x3,3,250,"Alexis Lafreniere (R13, +44)","Jackson LaCombe (R10, -4)",10
+Team 5,5,98.4,16.89,0.4422,94.05,4.348,4,NYI x3,4,213.3,"Dan Vladar (R10, +64)","Jack Hughes (R5, -8)",11
+Team 8,8,97.61,16.67,0.4277,92.95,4.669,4,TOR x3,3,161.2,"Mackenzie Blackwood (R9, +31)","David Pastrnak (R1, -0)",12
