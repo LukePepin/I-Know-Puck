@@ -91,13 +91,14 @@ with c2:
                         customdata=np.stack([x.player, x.manager], axis=1), hovertemplate="%{customdata[0]} (%{customdata[1]})<br>pick %{x}, ADP %{y:.0f}<extra></extra>")
     fig.update_layout(title="Pick number vs ADP, rounds 1-15", xaxis_title="pick number", yaxis=dict(title="ADP", range=[0, lim * 1.15]))
     fig_show(fig, 420)
-    st.caption("ADP is where a player usually goes in ESPN drafts. Above the line he went later than his ADP (a bargain); below it, earlier "
+    st.caption("ADP is where a player usually goes in ESPN drafts. Below the line he went later than his ADP (a bargain); above it, earlier "
                "(a reach). I leave out picks after ADP 200, where it stops meaning much.")
 c1, c2 = st.columns(2, gap="large")
 for col, title, fn in ((c1, "Biggest bargains", "nlargest"), (c2, "Biggest reaches", "nsmallest")):
     with col:
         st.markdown(f"**{title}**")
         table(getattr(q, fn)(5, "value_vs_adp"), [("overall", "Pick", "{:.0f}"), ("player", "Player", None, "manager"), ("value_vs_adp", "vs ADP", "{:+.0f}")])
+st.caption("vs ADP: how many picks later (+) or earlier (-) than his ADP a player went.")
 
 # --- team pages --------------------------------------------------------------------------------------
 st.markdown("### Team pages")

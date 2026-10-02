@@ -92,7 +92,7 @@ def main() -> None:
     d = client.draft(b.season)
     picks = pd.DataFrame([{"overall": int(r.overall), "round": int(r["round"]), "round_pick": int(r.round_pick), "slot": order.index(int(r.team_id)) + 1,
                            "manager": team_label(int(r.team_id)), **player_row(int(r.player_id))} for _, r in d.sort_values("overall").iterrows()])
-    picks["value_vs_adp"] = picks.adp - picks.overall  # > 0: taken later than the market expected
+    picks["value_vs_adp"] = picks.overall - picks.adp  # > 0: taken later than his ADP (a bargain); < 0: earlier (a reach)
     write("draft_2027.csv", picks)
 
     rosters = client.rosters(b.season) or {int(t): d[d.team_id == t].player_id.astype(int).tolist() for t in d.team_id.unique()}
