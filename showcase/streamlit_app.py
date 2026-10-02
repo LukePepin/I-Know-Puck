@@ -1,7 +1,8 @@
 """I Know Puck: public showcase.   Run:  streamlit run showcase/streamlit_app.py
 
-Reads only the snapshot in showcase/data/ (made by scripts/export_showcase.py). No league credentials and no
-live ESPN calls, so it can be hosted publicly.
+Three tabs: History (2024-26), Present (the 2027 draft and this week), Future (season simulation, how the
+models work, systems overview). Reads only the snapshot in showcase/data/ (made by scripts/export_showcase.py):
+no league credentials and no live ESPN calls, so it can be hosted publicly.
 """
 
 import sys
@@ -15,14 +16,10 @@ st.set_page_config(page_title="I Know Puck", page_icon=":material/sports_hockey:
 
 page = st.navigation(
     [
-        st.Page("app_pages/home.py", title="Overview", icon=":material/home:", default=True),
-        st.Page("app_pages/draft_2027.py", title="The 2027 draft", icon=":material/sports_hockey:"),
-        st.Page("app_pages/model.py", title="How the model picks", icon=":material/tune:"),
-        st.Page("app_pages/evidence.py", title="Does it work?", icon=":material/fact_check:"),
-        st.Page("app_pages/history.py", title="League history", icon=":material/history:"),
+        st.Page("app_pages/history.py", title="History", icon=":material/history:"),
+        st.Page("app_pages/present.py", title="Present", icon=":material/today:", default=True),
+        st.Page("app_pages/future.py", title="Future", icon=":material/insights:"),
     ],
-    position="sidebar",
+    position="top",
 )
-with st.sidebar:
-    st.caption("A fantasy hockey draft assistant built with statistics and operations research. Other managers are anonymized.")
 page.run()

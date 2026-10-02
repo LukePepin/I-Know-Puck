@@ -1,42 +1,40 @@
 # I Know Puck: public showcase
 
-A five-page, read-only version of the project for sharing: what it does, the 2027 draft, how the model picks,
-whether it works, and the league's history. It reads only the snapshot in `data/`, makes no web requests and
-needs no credentials, so it is safe to host publicly.
+A three-tab website about a 12-team ESPN fantasy hockey league: the models, the data and the visualizations.
+It reads only the snapshot in `data/`, makes no web requests and needs no credentials, so it is safe to host
+publicly.
 
 ```bash
 pip install -r showcase/requirements.txt
 streamlit run showcase/streamlit_app.py
 ```
 
-| Page | What it shows |
+| Tab | What it shows |
 |---|---|
-| Overview | The problem, the four-step method, headline numbers, what I learned |
-| The 2027 draft | Every roster's expected weekly points, who beats whom, the draft board, steals and reaches, notes on each roster |
-| How the model picks | Only the starting lineup scores (weekly lock), win chance from weekly points, simulated drafts with common random numbers, positional scarcity |
-| Does it work? | The seven pre-registered tests in plain language, projection accuracy vs ESPN, assumption checks, a theory tested |
-| League history | Habits that go with winning, drafting-style map, every 2024-26 pick vs its slot, my past seasons |
+| History | 2024-26 champions and standings, habits that go with winning, drafting-style map (graph spectral clustering), every past pick vs its slot, one theory tested |
+| Present | This week's matchups, power rankings, who beats whom, the 2026-27 draft board, bargains and reaches, every roster |
+| Future | A live season simulation (10,000 seasons on the real schedule, playoff and title odds), how the models work, the tests, a whole-system overview |
+
+Every tab ends with **How this page is built** (where its data comes from and what is done to it), a short
+**The math** box, and **Definitions**.
 
 ## What is in the snapshot (and what is not)
 
 `data/` is written by `scripts/export_showcase.py`, which runs on my machine with the private league cache.
 
-- **Included:** public NHL player data (names, positions, ESPN projections and ADP), the league's picks and
-  rosters, model results and test results.
-- **Anonymized:** every other manager ("Team 1".."Team 12" by 2027 draft slot, "Manager A".. in history).
-  Fantasy team names are not included.
-- **Never included:** ESPN cookies (`espn_s2`, `SWID`), the league id, ESPN member ids, other managers' names.
-  The export script checks nothing of this kind is written; `git grep` for the league id and cookie values
-  before publishing is a good second check.
+- **Included:** public NHL player data (names, positions, ESPN projections and ADP), the league's picks,
+  rosters, schedule and scores, model results and test results. Managers appear by **first name only**.
+- **Never included:** ESPN cookies (`espn_s2`, `SWID`), the league id, ESPN member ids, surnames, fantasy team names.
+- `scripts/check_public.py` scans every file git would publish for those before each push.
 
-Refresh it after new results: `PYTHONPATH=src .venv/bin/python scripts/export_showcase.py`.
+Refresh it (for example once a week): `PYTHONPATH=src .venv/bin/python scripts/export_showcase.py`, then
+`PYTHONPATH=src .venv/bin/python scripts/check_public.py`, then commit and push. The hosted site redeploys.
 
 ## Hosting on Streamlit Community Cloud (free)
 
-1. Push the repository to GitHub (the `.env` file is git-ignored and has never been committed).
-2. At share.streamlit.io choose **New app**, pick the repository and branch, and set the main file to
-   `showcase/streamlit_app.py`. Community Cloud installs `showcase/requirements.txt`.
-3. No secrets are needed. Leave the Secrets box empty.
+1. Sign in at share.streamlit.io with GitHub.
+2. **Create app**: repository `LukePepin/I-Know-Puck`, the branch to publish, main file `showcase/streamlit_app.py`.
+   Community Cloud installs `showcase/requirements.txt`.
+3. Leave **Secrets** empty and press **Deploy**.
 
-Alternatively copy the `showcase/` folder into its own public repository; it is self-contained
-(`streamlit_app.py`, `ui.py`, `app_pages/`, `data/`, `requirements.txt`, `.streamlit/config.toml`).
+Free apps sleep after a stretch without visitors; the next visitor wakes it in about half a minute.

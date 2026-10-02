@@ -1,6 +1,6 @@
 {
  "season": 2027,
- "snapshot": "2026-09-27",
+ "snapshot": "2026-10-01 23:52",
  "teams": 12,
  "rounds": 26,
  "history_seasons": [
@@ -67,6 +67,7 @@
   "BN": 6,
   "IR": 3
  },
+ "starters": 20,
  "lineup_lock": "weekly",
  "bench_usage": 0.25,
  "bench_fit": {
@@ -79,7 +80,6 @@
   "starters_mean": 108.23955026455025,
   "bench_mean": 24.045370370370375
  },
- "author_slot": 6,
  "groups": [
   {
    "name": "Goalie Grabbers",
@@ -106,8 +106,16 @@
    ]
   }
  ],
+ "regular_weeks": 24,
+ "playoff_teams": 8,
+ "current_week": 1,
+ "observed_weekly_sd": 20.434780343382187,
+ "model_weekly_sd": 16.903182016446376,
+ "sd_extra": 11.483147887280857,
+ "per_player_weekly_miss": 1.373428770983695,
+ "team_uncertainty": 6.0,
  "sources": [
-  "ESPN Fantasy (public player projections, ADP and stats; league drafts and results)",
+  "ESPN Fantasy (player projections, ADP and stats; league drafts, rosters, schedule and results)",
   "MoneyPuck (advanced stats)"
  ]
 }

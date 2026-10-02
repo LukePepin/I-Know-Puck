@@ -7,10 +7,11 @@ statistically before it is trusted.
 
 ## Public showcase
 
-`showcase/` is a simple, five-page version for sharing (overview, the 2027 draft, how the model picks, the
-evidence, league history). It reads a cleaned snapshot with every other manager anonymized and no credentials,
-so it can be hosted publicly: `streamlit run showcase/streamlit_app.py`. See [showcase/README.md](showcase/README.md)
-for what the snapshot contains and how to deploy it on Streamlit Community Cloud.
+`showcase/` is the public website: three tabs (History, Present, Future) on the models, data and visualizations,
+each with a "how this page is built" overview, a short math box and definitions. It reads a cleaned snapshot
+(managers by first name only, no credentials), so it can be hosted publicly:
+`streamlit run showcase/streamlit_app.py`. See [showcase/README.md](showcase/README.md) for what the snapshot
+contains and how to deploy it free on Streamlit Community Cloud.
 
 ## Private login data
 
@@ -20,7 +21,7 @@ This repository is public, so the ESPN login never goes into it:
 |---|---|---|
 | `ESPN_S2`, `ESPN_SWID` cookies and `ESPN_LEAGUE_ID` | `.env` on your own computer only (git-ignored, never committed) | the full research app and `scripts/export_showcase.py`, both run locally |
 | League data downloaded with them | `data/cache/` (git-ignored) | same |
-| The public website | `showcase/data/`: a cleaned snapshot, other managers anonymized, no ids or cookies | the hosted showcase, which needs no secrets |
+| The public website | `showcase/data/`: a cleaned snapshot, managers by first name only, no ids, surnames or cookies | the hosted showcase, which needs no secrets |
 
 Updating the website is a local three-step loop: run `PYTHONPATH=src .venv/bin/python scripts/export_showcase.py`,
 check with `PYTHONPATH=src .venv/bin/python scripts/check_public.py` (scans every file git would publish for the
