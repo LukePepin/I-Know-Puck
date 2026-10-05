@@ -69,6 +69,8 @@ def main() -> int:
         except UnicodeDecodeError:
             continue
         rel = f.relative_to(ROOT)
+        if rel.parts[:2] == ("app", "private"):
+            hits.append(f"{rel}: private in-season tool (app/private/ must stay git-ignored)")
         for term, label in terms.items():
             if term and term in text:
                 hits.append(f"{rel}: {label}")

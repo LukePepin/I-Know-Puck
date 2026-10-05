@@ -17,3 +17,6 @@ data/injury_overrides.json
 
 # picks copied from the ESPN draft room
 data/draft_log.txt
+
+# private in-season tools (lineup and waiver advice for my team): never committed
+app/private/

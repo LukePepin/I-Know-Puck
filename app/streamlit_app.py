@@ -58,8 +58,11 @@ st.session_state["app"] = {
     "pool": pool, "ctx": ctx, "creds": creds,
 }
 
+# app/private/ is git-ignored (my in-season lineup and waiver tools); its pages appear only where the folder exists
+private = [st.Page("private/next_week.py", title="Next week", icon=":material/event_upcoming:")] if (Path(__file__).parent / "private" / "next_week.py").exists() else []
 page = st.navigation(
     {
+        **({"Private": private} if private else {}),
         "Start here": [st.Page("app_pages/walkthrough.py", title="Walkthrough", icon=":material/menu_book:", default=True)],
         "Your league": [
             st.Page("app_pages/league_history.py", title="League history", icon=":material/history:"),
