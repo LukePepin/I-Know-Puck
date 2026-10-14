@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from ui import (ACCENT, BG, CAT, FAINT, GROUP, INK, MUTED, csv, definitions, esc, fig_show, group_of, header, how_built, js, math, note, pick_one,
+from ui import (ACCENT, BG, CAT, FAINT, GROUP, INK, MUTED, csv, definitions, esc, fig_show, group_of, header, js, math, note, pick_one,
                 snapshot_date, table)
 
 meta = js("meta.json")
@@ -151,18 +151,6 @@ mine = picks[picks.manager == mgr].assign(sub=lambda x: x.pos + " · " + x.nhl.f
 with st.expander(f"{mgr}'s draft: all {len(mine)} picks"):
     table(mine, [("round", "Rd", "{:.0f}"), ("overall", "Pick", "{:.0f}"), ("player", "Player", None, "sub"), ("value_vs_adp", "vs ADP", "{:+.0f}")])
 
-# --- systems overview ----------------------------------------------------------------------------------
-how_built(
-    [("ESPN league", "draft, rosters, live scores"), ("Projections", "each player's season"), ("Injuries", "games expected to miss"),
-     ("Best lineup", f"{meta['starters']} starters, Hungarian"), ("Weekly points", "average and swing"), ("Win chance", "rankings and odds")],
-    ["**Collect.** I pull the draft, current rosters, schedule and live scores from ESPN's fantasy API when I take the snapshot.",
-     "**Project.** I project each player's season from his last three seasons (recent ones count more), pull it toward his position's average, and blend "
-     "it with ESPN's projection and with where the market drafts him. Injured and suspended players lose the games they're expected to miss.",
-     f"**Fill the lineup.** Only {meta['starters']} starters score each week. The Hungarian algorithm puts players in the starting spots that maximise points. "
-     f"The league locks lineups weekly, so a bench player counts for {meta['bench_usage']:.2f} of his points. I measured that from real weekly scores.",
-     "**Score the roster.** Expected weekly points and their week-to-week swing give each team a bell curve. Comparing two curves gives the chance one team "
-     "beats the other."],
-)
 math((r"\mu = \frac{1}{26}\sum_i u_i \, p_i", "Expected weekly points: each player's projected season points p, times his usage u (1 for a starter, 0.25 for bench), over 26 weeks."),
      (r"P(A \text{ beats } B) = \Phi\!\left(\frac{\mu_A - \mu_B}{\sqrt{\sigma_A^2 + \sigma_B^2}}\right)",
       "Φ is the bell-curve (standard Normal) probability; σ is how much each team's weekly score swings."))

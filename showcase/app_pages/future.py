@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-from ui import (ACCENT, BG, CAT, FAINT, INK, MUTED, badge, csv, definitions, fig_show, header, how_built, js, math, note, rgba, system_map, table)
+from ui import (ACCENT, BG, CAT, FAINT, INK, MUTED, badge, csv, definitions, fig_show, header, js, math, note, rgba, system_map, table)
 
 meta = js("meta.json")
 teams = csv("teams_2027.csv").sort_values("rank").reset_index(drop=True)
@@ -107,17 +107,6 @@ st.caption(f"Wins are out of {meta['regular_weeks']} weeks; the range covers the
 one_in = 1 / max(float(fav.title), 1e-9)
 note(f"**Reading the odds.** Rosters are close and weekly scores swing a lot, so even the favourite wins the title in about 1 season in {one_in:.0f}. "
      "The simulation holds today's rosters fixed for the whole season; injuries, pickups and trades will move these numbers.")
-how_built(
-    [("Rosters", f"today's {meta['teams']} teams"), ("Weekly points", "average and swing"), ("ESPN schedule", f"{meta['regular_weeks']} weeks"),
-     ("10,000 seasons", "random weekly scores"), ("Standings", "wins, then points"), ("Playoffs", f"{n_po}-team bracket")],
-    [f"**Inputs.** Each team's expected weekly points from the Present tab, and its week-to-week swing. The roster model alone says ±{meta['model_weekly_sd']:.0f} "
-     f"points; real teams in 2024-26 swung by ±{meta['observed_weekly_sd']:.0f}, because injuries, roster moves and schedules add noise. I add the missing "
-     f"±{meta['sd_extra']:.0f} so simulated weeks are as unpredictable as real ones.",
-     "**One season.** Each team draws a season-long strength (its projection plus a random error set by the slider), then a fresh random score every week. "
-     "The higher score wins each real matchup on the schedule.",
-     "**Repeat.** 10,000 seasons give a distribution of wins, finishing places, playoff spots and champions. Each share is accurate to about ±1 percentage point.",
-     "**Runs live.** The simulation reruns on the server each time the slider moves, from the published rosters and schedule."],
-)
 math((r"\text{strength}_t \sim \mathcal{N}(\mu_t, u^2), \qquad \text{score}_{t,w} \sim \mathcal{N}(\text{strength}_t, \sigma_t^2)", "u is the slider; μ and σ are each team's expected weekly points and swing."),
      (r"\sigma_t^2 = \sigma_{\text{model},t}^2 + \sigma_{\text{extra}}^2", f"σ_extra = {meta['sd_extra']:.1f}, chosen so simulated weeks swing like the league's real weeks."))
 

@@ -1,22 +1,22 @@
 week,home,away,home_pts,away_pts,status
-1,Bryce,Luke,55.8,31.7,in progress
-1,Liam,Jake,28.6,40.9,in progress
-1,Elijah,Dylan,35.2,38.5,in progress
-1,Marshall,Zack,34,25.2,in progress
-1,Lenny,Joe,29.5,27.6,in progress
-1,Chris,Daniel,16,39.1,in progress
-2,Luke,Jake,,,upcoming
-2,Dylan,Bryce,,,upcoming
-2,Zack,Liam,,,upcoming
-2,Joe,Elijah,,,upcoming
-2,Daniel,Marshall,,,upcoming
-2,Chris,Lenny,,,upcoming
-3,Dylan,Luke,,,upcoming
-3,Jake,Zack,,,upcoming
-3,Bryce,Joe,,,upcoming
-3,Liam,Daniel,,,upcoming
-3,Elijah,Chris,,,upcoming
-3,Marshall,Lenny,,,upcoming
+1,Bryce,Luke,119.3,75.9,final
+1,Liam,Jake,95.2,105,final
+1,Elijah,Dylan,77.5,78.8,final
+1,Marshall,Zack,73.9,80.8,final
+1,Lenny,Joe,95.3,66.6,final
+1,Chris,Daniel,51.4,75.3,final
+2,Luke,Jake,104.3,108.1,final
+2,Dylan,Bryce,109.5,128.4,final
+2,Zack,Liam,93.8,110.9,final
+2,Joe,Elijah,112.8,80.9,final
+2,Daniel,Marshall,74.5,70.6,final
+2,Chris,Lenny,88.3,86.8,final
+3,Dylan,Luke,21.7,20.4,in progress
+3,Jake,Zack,19.3,39.5,in progress
+3,Bryce,Joe,25.6,21.3,in progress
+3,Liam,Daniel,30.2,26.1,in progress
+3,Elijah,Chris,22.4,43,in progress
+3,Marshall,Lenny,33.5,30.9,in progress
 4,Luke,Zack,,,upcoming
 4,Joe,Dylan,,,upcoming
 4,Daniel,Jake,,,upcoming

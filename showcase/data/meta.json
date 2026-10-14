@@ -1,6 +1,6 @@
 {
  "season": 2027,
- "snapshot": "2026-10-02 13:37",
+ "snapshot": "2026-10-13 21:54",
  "teams": 12,
  "rounds": 26,
  "history_seasons": [
@@ -108,10 +108,10 @@
  ],
  "regular_weeks": 24,
  "playoff_teams": 8,
- "current_week": 1,
+ "current_week": 3,
  "observed_weekly_sd": 20.434780343382187,
- "model_weekly_sd": 16.903182016446376,
- "sd_extra": 11.483147887280857,
+ "model_weekly_sd": 16.781886173954554,
+ "sd_extra": 11.659697428609027,
  "per_player_weekly_miss": 1.373428770983695,
  "team_uncertainty": 6.0,
  "spectral": {

@@ -15,8 +15,8 @@ streamlit run showcase/streamlit_app.py
 | Present | This week's games, power rankings, the 2026-27 draft (positions by round, bargains and reaches), and a page for every team: roster, odds against each opponent, its draft |
 | Future | A live season simulation (10,000 seasons on the real schedule, playoff and title odds), how the models work, the tests, a whole-system overview |
 
-Every tab ends with **How this page is built** (where its data comes from and what is done to it), a short
-**The math** box, and **Definitions**.
+History ends with **How this page is built** (where its data comes from and what is done to it); Future has the
+whole-system overview. Every tab has a short **The math** box and **Definitions**.
 
 ## What is in the snapshot (and what is not)
 
